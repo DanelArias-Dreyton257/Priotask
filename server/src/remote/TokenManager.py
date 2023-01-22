@@ -1,3 +1,9 @@
+'''
+This class is used to manage the token for the remote server.
+It is a singleton class, so only one instance of it can exist
+at a time.
+'''
+
 
 class TokenManager:
 
