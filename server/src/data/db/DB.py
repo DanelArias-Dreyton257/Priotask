@@ -7,7 +7,7 @@ class DB:
         self.cursor = None
 
     def connect(self):
-        self.connection = sqlite3.connect("users.db")
+        self.connection = sqlite3.connect("priotask.db")
         self.cursor = self.connection.cursor()
 
     def execute(self, query, params=None):
