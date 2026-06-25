@@ -67,6 +67,10 @@ themselves):
 - `./scripts/reset_db.sh [path]` — deletes the SQLite file (`priotask.db` by default), wiping
   every user, task and trained `PrioritizerNetwork` weight; the server recreates an empty one with
   the current schema next time it starts. Prompts for confirmation unless run with `FORCE=1`.
+- `./scripts/seed_demo_data.sh [path]` — registers an `admin`/`admin` user (if it doesn't exist
+  yet) and seeds it with a varied set of demo tasks (overdue, due today/this week/this month,
+  different efforts/importances/types, a couple already completed, one partially logged) for
+  manually trying out the UI. No-op if `admin` already has tasks.
 
 ## The Behaviour
 Priotask is supposed to let a user register the tasks they need to do and help them schedule them. The user can also prioritize tasks, and the application will help them focus on the most important tasks. The user can also mark tasks as done, and the application will adapt to the user's preferences. 
