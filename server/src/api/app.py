@@ -1,13 +1,19 @@
 from flask import Flask, request
 
 from server.src.api.plan_routes import plan_bp
+from server.src.api.prioritizer_routes import prioritizer_bp
 from server.src.api.task_routes import task_bp
 from server.src.api.user_routes import user_bp
 from server.src.data.db.DB import DB
+from server.src.data.db.ModelWeightsDAO import ModelWeightsDAO
 from server.src.data.db.TaskDAO import TaskDAO
 from server.src.data.db.UserDAO import UserDAO
 from server.src.services.AuthService import AuthService
 from server.src.services.Prioritizer.DailyPlanner import DailyPlanner
+from server.src.services.Prioritizer.ModelStore import SqliteModelStore
+from server.src.services.Prioritizer.PrioritizerNetwork import PrioritizerNetwork
+from server.src.services.Prioritizer.PrioritizerService import PrioritizerService
+from server.src.services.Prioritizer.PrioritizerTrainer import PrioritizerTrainer
 from server.src.services.TaskManager import TaskManager
 from server.src.services.UserManager import UserManager
 
@@ -15,7 +21,7 @@ from server.src.services.UserManager import UserManager
 def create_app(db_path: str = "priotask.db") -> Flask:
     """
     Wires the persistence layer (Phase 2) and the prioritization layer
-    (Phases 1/3) into the Flask app used by the Phase 4 REST API. `db_path`
+    (Phases 1/3/6) into the Flask app used by the Phase 4 REST API. `db_path`
     can be ":memory:" for tests.
     """
     app = Flask(__name__)
@@ -24,11 +30,19 @@ def create_app(db_path: str = "priotask.db") -> Flask:
     app.user_manager = UserManager(UserDAO(db))
     app.task_manager = TaskManager(TaskDAO(db))
     app.auth_service = AuthService(app.user_manager)
-    app.daily_planner = DailyPlanner()
+
+    # PrioritizerNetwork falls back to FormulaPrioritizer's own score until a
+    # user has a trained network stored, so wiring it in here is a no-op for
+    # everyone until /api/prioritizer/train has run for them (Phase 6).
+    model_store = SqliteModelStore(ModelWeightsDAO(db))
+    network = PrioritizerNetwork(model_store)
+    app.daily_planner = DailyPlanner(PrioritizerService(network))
+    app.prioritizer_trainer = PrioritizerTrainer(app.task_manager, network)
 
     app.register_blueprint(user_bp, url_prefix="/api")
     app.register_blueprint(task_bp, url_prefix="/api")
     app.register_blueprint(plan_bp, url_prefix="/api")
+    app.register_blueprint(prioritizer_bp, url_prefix="/api")
 
     _enable_cors(app)
     return app
