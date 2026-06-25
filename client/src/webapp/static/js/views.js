@@ -79,7 +79,6 @@ export const Views = {
                 buttonsRow.appendChild(completeButton);
 
                 const deleteButton = document.createElement("button");
-                deleteButton.className = "delete-button";
                 deleteButton.textContent = "Delete";
                 deleteButton.addEventListener("click", () => onDelete(task.task_id));
                 buttonsRow.appendChild(deleteButton);

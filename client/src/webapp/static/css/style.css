@@ -147,13 +147,8 @@ ul {
     background: #2e9e5b;
 }
 
-.delete-button {
-    background: #e8a0a0;
-    color: #6b1f1f;
-}
-
-.delete-button:hover {
-    background: #df8a8a;
+.task-buttons-row button:last-child {
+    background: #d9534f;
 }
 
 .log-hours-form {
