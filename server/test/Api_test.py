@@ -162,6 +162,45 @@ class ApiTest(unittest.TestCase):
         self.assertEqual(response.status_code, 200)
         self.assertFalse(response.get_json()["trained"])
 
+    def _train_with_enough_signal(self, token):
+        for i in range(3):
+            task_id = self._create_task(token, name=f"done-{i}").get_json()["task_id"]
+            self.client.post(f"/api/tasks/{task_id}/complete", headers=self._auth_headers(token))
+        self._create_task(token, name="open")
+        return self.client.post("/api/prioritizer/train", headers=self._auth_headers(token))
+
+    def test_prioritizer_status_reports_untrained_by_default(self):
+        token = self._register_and_login()
+
+        response = self.client.get("/api/prioritizer/status", headers=self._auth_headers(token))
+        self.assertEqual(response.status_code, 200)
+        body = response.get_json()
+        self.assertFalse(body["trained"])
+        self.assertIsNone(body["updated_at"])
+
+    def test_prioritizer_status_reports_trained_after_training(self):
+        token = self._register_and_login()
+        self.assertTrue(self._train_with_enough_signal(token).get_json()["trained"])
+
+        response = self.client.get("/api/prioritizer/status", headers=self._auth_headers(token))
+        body = response.get_json()
+        self.assertTrue(body["trained"])
+        self.assertIsNotNone(body["updated_at"])
+
+    def test_delete_prioritizer_model_reverts_status_to_untrained(self):
+        token = self._register_and_login()
+        self.assertTrue(self._train_with_enough_signal(token).get_json()["trained"])
+
+        response = self.client.delete("/api/prioritizer/model", headers=self._auth_headers(token))
+        self.assertEqual(response.status_code, 200)
+
+        status = self.client.get("/api/prioritizer/status", headers=self._auth_headers(token))
+        self.assertFalse(status.get_json()["trained"])
+
+    def test_prioritizer_status_and_delete_require_auth(self):
+        self.assertEqual(self.client.get("/api/prioritizer/status").status_code, 401)
+        self.assertEqual(self.client.delete("/api/prioritizer/model").status_code, 401)
+
     def test_delete_task_removes_it(self):
         token = self._register_and_login()
         task_id = self._create_task(token).get_json()["task_id"]

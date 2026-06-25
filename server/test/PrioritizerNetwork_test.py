@@ -106,6 +106,17 @@ class PrioritizerNetworkTest(unittest.TestCase):
         score = fresh_network.score(chosen, REFERENCE)
         self.assertIsInstance(score, float)
 
+    def test_forget_deletes_weights_and_clears_cache(self):
+        chosen = make_task("chosen", days_until_deadline=1.0, importance=8, user_id=self.user_id)
+        skipped = make_task("skipped", days_until_deadline=20.0, importance=1, user_id=self.user_id)
+        network = PrioritizerNetwork(self.store)
+        network.fit(self.user_id, [(chosen, REFERENCE, 1), (skipped, REFERENCE, 0)], epochs=5)
+
+        network.forget(self.user_id)
+
+        self.assertIsNone(self.store.load(self.user_id, PrioritizerNetwork.MODEL_TYPE))
+        self.assertAlmostEqual(network.score(chosen, REFERENCE), FormulaPrioritizer().score(chosen, REFERENCE))
+
 
 class PrioritizerTrainerTest(unittest.TestCase):
 

@@ -84,3 +84,8 @@ class PrioritizerNetwork(PrioritizerModel):
 
         self._cache[user_id] = model
         self.model_store.save(user_id, self.MODEL_TYPE, self._serialize(model), datetime.now())
+
+    def forget(self, user_id: int) -> None:
+        """Discards a user's trained model, reverting score() to FormulaPrioritizer."""
+        self.model_store.delete(user_id, self.MODEL_TYPE)
+        self._cache.pop(user_id, None)

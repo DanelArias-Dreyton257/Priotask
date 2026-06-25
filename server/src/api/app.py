@@ -35,8 +35,10 @@ def create_app(db_path: str = "priotask.db") -> Flask:
     # PrioritizerNetwork falls back to FormulaPrioritizer's own score until a
     # user has a trained network stored, so wiring it in here is a no-op for
     # everyone until /api/prioritizer/train has run for them (Phase 6).
-    model_store = SqliteModelStore(ModelWeightsDAO(db))
+    app.model_weights_dao = ModelWeightsDAO(db)
+    model_store = SqliteModelStore(app.model_weights_dao)
     network = PrioritizerNetwork(model_store)
+    app.prioritizer_network = network
     app.daily_planner = DailyPlanner(PrioritizerService(network))
     app.prioritizer_trainer = PrioritizerTrainer(app.task_manager, network)
 
