@@ -1,11 +1,12 @@
 from dataclasses import dataclass
-from datetime import datetime
+from datetime import datetime, timedelta
 from typing import Dict, List, Optional, Tuple
 
 from server.src.data.domain.Task import Task
 from server.src.services.Prioritizer.PrioritizerService import PrioritizerService
 
 DEFAULT_AVAILABLE_HOURS_TODAY = 6.0
+DEFAULT_PLAN_WEEK_DAYS = 7
 EPSILON = 1e-9
 
 
@@ -16,6 +17,18 @@ class PlanEntry:
     task: Task
     score: float
     recommended_hours_today: float
+
+
+@dataclass
+class DayPlan:
+    """One day of a multi-day plan (Phase 9): the same `plan()` output for
+    that day, plus the tasks due that day and the diagnostics (eq. 6) for the
+    day's eligible tasks, used by the client as a per-day load indicator."""
+    date: datetime
+    entries: List[PlanEntry]
+    diagnostics: Dict[str, float]
+    deadlines: List[Task]
+    available_hours: float
 
 
 class DailyPlanner:
@@ -95,3 +108,61 @@ class DailyPlanner:
             PlanEntry(rank=i + 1, task=task, score=score, recommended_hours_today=hours_by_task[task])
             for i, (task, score) in enumerate(ranked)
         ]
+
+    @staticmethod
+    def _clone_task(task: Task) -> Task:
+        """A by-value copy of `task`, so `plan_week` can carry remaining
+        effort forward day by day without mutating the caller's tasks."""
+        return Task(
+            task.name, task.deadline, task.expected_duration_h, task.importance,
+            task.task_type, task.task_subtype, task_id=task.task_id, user_id=task.user_id,
+            done=task.done, completed_at=task.completed_at,
+        )
+
+    def plan_week(
+        self,
+        tasks: List[Task],
+        days: int = DEFAULT_PLAN_WEEK_DAYS,
+        available_hours_today: float = DEFAULT_AVAILABLE_HOURS_TODAY,
+        reference_date: Optional[datetime] = None,
+    ) -> List[DayPlan]:
+        """Generalizes `plan()` across `days` simulated days: each day's
+        recommended hours are subtracted from that task's remaining effort
+        before ranking the next day, so a task that gets fully covered today
+        no longer competes for budget tomorrow (carrying the existing
+        water-filling logic forward instead of re-deriving it per day)."""
+        reference_date = reference_date or datetime.now()
+        not_done = [task for task in tasks if not task.done]
+        working_tasks = [self._clone_task(task) for task in not_done]
+
+        day_plans = []
+        for day_index in range(days):
+            day_date = reference_date + timedelta(days=day_index)
+            entries = self.plan(working_tasks, available_hours_today, day_date)
+            diagnostics = self.service.diagnostics([entry.task for entry in entries], day_date)
+            deadlines = [task for task in not_done if task.deadline.date() == day_date.date()]
+
+            # Snapshot each entry's task before it's mutated below for the
+            # next day's carry-forward - otherwise this day's PlanEntry would
+            # retroactively show the task as done once a later day fully
+            # covers its remaining effort (PlanEntry.task is the same
+            # working_tasks object, not a copy).
+            snapshot_entries = [
+                PlanEntry(rank=entry.rank, task=self._clone_task(entry.task),
+                          score=entry.score, recommended_hours_today=entry.recommended_hours_today)
+                for entry in entries
+            ]
+            day_plans.append(DayPlan(
+                date=day_date, entries=snapshot_entries, diagnostics=diagnostics,
+                deadlines=deadlines, available_hours=available_hours_today,
+            ))
+
+            hours_by_task = {entry.task: entry.recommended_hours_today for entry in entries}
+            for task in working_tasks:
+                used = hours_by_task.get(task)
+                if used:
+                    task.expected_duration_h = max(0.0, task.expected_duration_h - used)
+                    if task.expected_duration_h <= EPSILON:
+                        task.done = True
+
+        return day_plans

@@ -81,6 +81,49 @@ class DailyPlannerTest(unittest.TestCase):
         plan = self.planner.plan([task], available_hours_today=0.0, reference_date=REFERENCE)
         self.assertAlmostEqual(plan[0].recommended_hours_today, 0.0)
 
+    def test_plan_week_returns_one_day_plan_per_day(self):
+        task = make_task(hours=1.0)
+        week = self.planner.plan_week([task], days=7, available_hours_today=6.0, reference_date=REFERENCE)
+        self.assertEqual(len(week), 7)
+        self.assertEqual([day.date for day in week], [REFERENCE + timedelta(days=i) for i in range(7)])
+
+    def test_plan_week_carries_remaining_effort_forward(self):
+        task = make_task(hours=10.0, days_until_deadline=20.0)
+        week = self.planner.plan_week([task], days=3, available_hours_today=4.0, reference_date=REFERENCE)
+
+        self.assertAlmostEqual(week[0].entries[0].recommended_hours_today, 4.0)
+        self.assertAlmostEqual(week[1].entries[0].recommended_hours_today, 4.0)
+        self.assertAlmostEqual(week[2].entries[0].recommended_hours_today, 2.0)
+
+    def test_plan_week_drops_task_once_fully_covered(self):
+        task = make_task(hours=4.0, days_until_deadline=20.0)
+        week = self.planner.plan_week([task], days=3, available_hours_today=6.0, reference_date=REFERENCE)
+
+        self.assertAlmostEqual(week[0].entries[0].recommended_hours_today, 4.0)
+        self.assertEqual(week[1].entries, [])
+        self.assertEqual(week[2].entries, [])
+
+    def test_plan_week_does_not_mutate_input_tasks(self):
+        task = make_task(hours=4.0, days_until_deadline=20.0)
+        self.planner.plan_week([task], days=3, available_hours_today=6.0, reference_date=REFERENCE)
+        self.assertAlmostEqual(task.expected_duration_h, 4.0)
+        self.assertFalse(task.done)
+
+    def test_plan_week_flags_deadlines_on_their_due_day_even_without_hours(self):
+        due_soon = make_task("due-soon", days_until_deadline=2.0, hours=1.0, importance=1)
+        hungry = make_task("hungry", days_until_deadline=20.0, hours=24.0, importance=10)
+        week = self.planner.plan_week(
+            [due_soon, hungry], days=4, available_hours_today=0.0, reference_date=REFERENCE,
+        )
+        self.assertEqual([task.name for task in week[2].deadlines], ["due-soon"])
+        self.assertEqual(week[2].deadlines[0].expected_duration_h, 1.0)
+
+    def test_plan_week_excludes_already_done_tasks(self):
+        done_task = make_task("done", done=True)
+        week = self.planner.plan_week([done_task], days=2, reference_date=REFERENCE)
+        self.assertEqual(week[0].entries, [])
+        self.assertEqual(week[0].deadlines, [])
+
 
 if __name__ == "__main__":
     unittest.main()

@@ -190,6 +190,39 @@ class ApiTest(unittest.TestCase):
         self.assertEqual(body[0]["task"]["name"], "urgent")
         self.assertGreater(body[0]["recommended_hours_today"], body[1]["recommended_hours_today"])
 
+    def test_week_plan_returns_one_entry_per_day(self):
+        token = self._register_and_login()
+        self._create_task(token, name="urgent", expected_duration_h=10.0, importance=9)
+
+        response = self.client.get("/api/plan/week?days=3&hours=4", headers=self._auth_headers(token))
+        self.assertEqual(response.status_code, 200)
+        body = response.get_json()
+        self.assertEqual(len(body), 3)
+        self.assertEqual(body[0]["planned_hours_total"], 4.0)
+        self.assertIn("diagnostics", body[0])
+
+    def test_week_plan_flags_deadline_day_even_without_hours(self):
+        token = self._register_and_login()
+        self._create_task(
+            token, name="due-soon",
+            deadline=(datetime.now() + timedelta(days=2)).isoformat(),
+            expected_duration_h=1.0, importance=1,
+        )
+        self._create_task(token, name="hungry", expected_duration_h=24.0, importance=10)
+
+        response = self.client.get("/api/plan/week?days=4&hours=0", headers=self._auth_headers(token))
+        body = response.get_json()
+        self.assertEqual([task["name"] for task in body[2]["deadlines"]], ["due-soon"])
+
+    def test_week_plan_rejects_invalid_days(self):
+        token = self._register_and_login()
+        response = self.client.get("/api/plan/week?days=0", headers=self._auth_headers(token))
+        self.assertEqual(response.status_code, 400)
+
+    def test_week_plan_requires_auth(self):
+        response = self.client.get("/api/plan/week")
+        self.assertEqual(response.status_code, 401)
+
     def test_logout_invalidates_token(self):
         token = self._register_and_login()
         self.client.post("/api/auth/logout", headers=self._auth_headers(token))
