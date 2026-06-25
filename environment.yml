@@ -12,13 +12,15 @@ dependencies:
   - pandas
   - tqdm
   - ipywidgets
-  # Testing tools 
+  # Testing tools
   - mypy
   - pylint
   - black
   - isort
-  
+
   - pip:
       - flask
       # Phase 6: PrioritizerNetwork (per-user neural net)
       - tensorflow
+      # Browser-driven manual/E2E verification of the client UI
+      - playwright
