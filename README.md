@@ -19,7 +19,13 @@ Priotask/
 │
 └── server/                  # Storage, business logic, prioritization
     ├── src/
-    │   ├── Server.py        # Entry point (stub, future API)
+    │   ├── Server.py        # Entry point: runs the Flask app (create_app)
+    │   ├── api/              # Phase 4 REST API (Flask)
+    │   │   ├── app.py        # create_app(): wires DB/managers/services, registers blueprints
+    │   │   ├── auth.py       # require_auth decorator (Bearer token -> g.user_id)
+    │   │   ├── user_routes.py    # POST /users, /auth/login, /auth/logout
+    │   │   ├── task_routes.py    # CRUD for /tasks (+ /tasks/<id>/complete)
+    │   │   └── plan_routes.py    # GET /plan/today (DailyPlanner, Phase 3)
     │   ├── data/
     │   │   ├── db/           # DB access: DB.py (sqlite3, schema for users/tasks), TaskDAO/UserDAO
     │   │   ├── domain/       # Domain models: Task, User (now carry persistence fields)
@@ -28,6 +34,7 @@ Priotask/
     │   └── services/
     │       ├── TaskManager.py       # Task CRUD + domain<->DTO mapping (done)
     │       ├── UserManager.py       # User CRUD + password hashing (done)
+    │       ├── AuthService.py       # Bearer token issuing/lookup, in-memory (Phase 4, done)
     │       └── Prioritizer/         # See "The Prioritization Model" below
     │           ├── PrioritizerModel.py      # Common interface: score(task, reference_date)
     │           ├── FormulaPrioritizer.py    # Closed-form model from tareas_spec.pdf (done)
@@ -39,6 +46,7 @@ Priotask/
         ├── DailyPlanner_test.py     # Unit tests for DailyPlanner (water-filling budget)
         ├── TaskManager_test.py      # Unit tests for TaskManager (in-memory sqlite)
         ├── UserManager_test.py      # Unit tests for UserManager (in-memory sqlite)
+        ├── Api_test.py              # Unit tests for the Flask API (in-memory sqlite)
         └── Server_test.py
 ```
 
@@ -161,10 +169,19 @@ This is where "the score" becomes the feature the user actually sees, implemente
   Diagnostics already built in Phase 1 (`mean`, `std`, `V/4`, `V/8`) are meant to help calibrate
   `available_hours_today` itself.
 
-### Phase 4 — Server API
-- Endpoints to list/create/update/complete tasks and to fetch "today's plan" (ranked tasks +
-  `recommended_hours_today` from Phase 3).
-- Wire up the already-stubbed `RemoteFacade`/`TokenManager` on the client side against it.
+### Phase 4 — Server API (done)
+A Flask app (`server/src/api/app.py`, `create_app`) exposing the persistence and prioritization
+layers from Phases 1-3 over HTTP, run via `python -m server.src.Server`:
+- `POST /api/users` — register a user.
+- `POST /api/auth/login` / `POST /api/auth/logout` — issue/revoke a bearer token
+  (`AuthService`, in-memory token store, no expiry yet — restarting the server logs everyone out).
+- `GET /api/tasks`, `POST /api/tasks`, `GET|PUT|DELETE /api/tasks/<id>`,
+  `POST /api/tasks/<id>/complete` — task CRUD, scoped to the authenticated user
+  (`Authorization: Bearer <token>`); tasks belonging to another user 404.
+- `GET /api/plan/today?hours=<n>` — today's plan: ranked tasks + `recommended_hours_today`
+  from `DailyPlanner` (Phase 3), `hours` overrides the default daily budget.
+- Wiring up the already-stubbed `RemoteFacade`/`TokenManager` on the client side against this
+  API is left to Phase 5.
 
 ### Phase 5 — Minimal client
 - Just enough UI (or CLI) to register tasks and show today's plan end to end.
@@ -186,14 +203,14 @@ This section presents all the tasks that need to be done to complete the project
 - [x] Create the server user management system
 - [x] Create the server task management system
 - [x] Turn the priority score into a daily time budget (`DailyPlanner`, Phase 3)
-- [ ] Create the server API
+- [x] Create the server API (Flask, `server/src/api/`, Phase 4)
 ### Client
 - [ ] Create the client user interface
 - [ ] Create the client task management system
 - [ ] Create the client connection to the server
 ### Tests
-- [x] Create the tests for the server (Prioritizer, DailyPlanner, TaskManager, UserManager —
-  `server/test/`)
+- [x] Create the tests for the server (Prioritizer, DailyPlanner, TaskManager, UserManager,
+  Api — `server/test/`)
 - [ ] Create the tests for the client
 ### Documentation
 - [ ] Create the documentation for the server
