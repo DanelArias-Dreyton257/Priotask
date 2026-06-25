@@ -23,6 +23,15 @@ CREATE TABLE IF NOT EXISTS tasks (
     completed_at TEXT,
     FOREIGN KEY (user_id) REFERENCES users (user_id)
 );
+
+CREATE TABLE IF NOT EXISTS model_weights (
+    user_id INTEGER NOT NULL,
+    model_type TEXT NOT NULL,
+    payload BLOB NOT NULL,
+    updated_at TEXT NOT NULL,
+    PRIMARY KEY (user_id, model_type),
+    FOREIGN KEY (user_id) REFERENCES users (user_id)
+);
 """
 
 
