@@ -5,6 +5,39 @@ Priotask helps manage and prioritize tasks for effective time management, allowi
 Priotask is supposed to let a user register the tasks they need to do and help them schedule them. The user can also prioritize tasks, and the application will help them focus on the most important tasks. The user can also mark tasks as done, and the application will adapt to the user's preferences. 
 ## The Code Behind
 The project is a client-server application. The server is suppose to store user and task data, while the client is the user interface for the aplication. All the code is written in Python. The server includes a database, which is a SQLite database. The server also includes a 'Prioritizer'. There are two prioritization models behind a common interface (`PrioritizerModel`): `FormulaPrioritizer`, a closed-form scoring model derived directly from the project's technical spec (urgency from effort/deadline, scaled by importance), and `PrioritizerNetwork`, a small neural network meant to eventually replace it. That network is trained to prioritize tasks based on the user's input: each time a user selects to do a task, that one is flagged to be the priority and the prioritizer is adapted to consider those parameters as important. The idea is that each user will have their own prioritizer, which will be trained to prioritize tasks based on their own preferences. (This means that the neural network's weights will be stored in the database, and will be updated each time the user selects a task to do.)
+## Repo Structure
+```
+Priotask/
+├── tareas_spec.pdf          # Technical spec: the formulas behind FormulaPrioritizer
+├── environment.yml          # Conda environment (Python, lint/format/type-check tools)
+│
+├── client/                  # User-facing side (not started yet)
+│   ├── src/
+│   │   └── Client.py        # Entry point (stub)
+│   └── test/
+│       └── Client_test.py
+│
+└── server/                  # Storage, business logic, prioritization
+    ├── src/
+    │   ├── Server.py        # Entry point (stub, future API)
+    │   ├── data/
+    │   │   ├── db/           # DB access: DB.py (sqlite3), TaskDAO/UserDAO, TempDB (mock store)
+    │   │   ├── domain/       # Domain models: Task, User
+    │   │   └── dto/          # Data-transfer objects: TaskDTO, UserDTO
+    │   ├── remote/           # Client-server link: RemoteFacade, TokenManager (stubs)
+    │   └── services/
+    │       ├── TaskManager.py       # Task CRUD (stub)
+    │       ├── UserManager.py       # User CRUD (stub)
+    │       └── Prioritizer/         # See "The Prioritization Model" below
+    │           ├── PrioritizerModel.py      # Common interface: score(task, reference_date)
+    │           ├── FormulaPrioritizer.py    # Closed-form model from tareas_spec.pdf (done)
+    │           ├── PrioritizerNetwork.py    # Per-user neural network (stub, future)
+    │           └── PrioritizerService.py    # Ranking (rank) + diagnostics, model-agnostic
+    └── test/
+        ├── Prioritizer_test.py      # Unit tests for FormulaPrioritizer/PrioritizerService
+        └── Server_test.py
+```
+
 ## The Prioritization Model
 This is the math behind `FormulaPrioritizer` (`server/src/services/Prioritizer/FormulaPrioritizer.py`),
 taken directly from the project's technical spec ([tareas_spec.pdf](tareas_spec.pdf)). Given the
