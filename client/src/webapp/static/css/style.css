@@ -129,6 +129,13 @@ ul {
 
 .task-actions {
     display: flex;
+    flex-direction: column;
+    align-items: flex-end;
+    gap: 0.4rem;
+}
+
+.task-buttons-row {
+    display: flex;
     gap: 0.4rem;
 }
 
@@ -136,7 +143,7 @@ ul {
     background: #6b7280;
 }
 
-.task-actions button:first-child {
+.task-buttons-row button:first-child {
     background: #2e9e5b;
 }
 

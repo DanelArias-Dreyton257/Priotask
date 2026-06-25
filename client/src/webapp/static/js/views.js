@@ -70,16 +70,20 @@ export const Views = {
                 });
                 actions.appendChild(logHoursForm);
 
+                const buttonsRow = document.createElement("div");
+                buttonsRow.className = "task-buttons-row";
+
                 const completeButton = document.createElement("button");
                 completeButton.textContent = "Done";
                 completeButton.addEventListener("click", () => onComplete(task.task_id));
-                actions.appendChild(completeButton);
+                buttonsRow.appendChild(completeButton);
 
                 const deleteButton = document.createElement("button");
                 deleteButton.textContent = "Delete";
                 deleteButton.addEventListener("click", () => onDelete(task.task_id));
-                actions.appendChild(deleteButton);
+                buttonsRow.appendChild(deleteButton);
 
+                actions.appendChild(buttonsRow);
                 item.appendChild(actions);
             }
 
