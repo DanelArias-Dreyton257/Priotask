@@ -2,7 +2,7 @@
 Priotask helps manage and prioritize tasks for effective time management, allowing users to quickly focus on important tasks and meet deadlines. It streamlines manual workload management.
 
 ## Getting Started
-Everything needed to run Phases 1-7 locally and try the app end to end.
+Everything needed to run Phases 1-8 locally and try the app end to end.
 
 ### 1. Set up the environment
 ```
@@ -46,11 +46,16 @@ Open `http://localhost:5500` in a browser:
 2. Add a task with the **New task** form (name, deadline, effort in hours, importance 1-10).
 3. The task shows up under **Your tasks**, and **Today's plan** shows the recommended hours to
    spend on it today (`DailyPlanner`, Phase 3) alongside its priority rank.
-4. **Done** marks a task complete, **Delete** removes it, and **Log hours** logs partial progress
-   (subtracting from the task's remaining effort, auto-completing it once none is left); all three
-   refresh **Today's plan** automatically. The **Refresh plan** button re-fetches the plan with a
-   different hours budget.
-5. **Train priority model** fits the user's `PrioritizerNetwork` (Phase 6) on their task history so
+4. **Done** marks a task complete, **Delete** removes it, **Edit** turns the task into an inline
+   form to change any of its fields, and **Log hours** logs partial progress (subtracting from the
+   task's remaining effort, auto-completing it once none is left); all of these refresh **Today's
+   plan** automatically. The **Refresh plan** button re-fetches the plan with a different hours
+   budget.
+5. Above the task list: **search by name**, **filter by type/sub-type**, **sort** by priority/
+   deadline/type, and a **Show completed** checkbox to reveal done tasks (hidden by default).
+   Overdue tasks are highlighted. Type/sub-type on the task form (and the edit form) are dropdowns
+   of categories you've already used, with a "+ Add new..." option for a new one.
+6. **Train priority model** fits the user's `PrioritizerNetwork` (Phase 6) on their task history so
    far — it reports whether there was enough completion history to actually train on.
 
 ### 5. Run the tests
@@ -58,6 +63,11 @@ Open `http://localhost:5500` in a browser:
 python -m unittest discover -s server/test -p "*_test.py"
 python -m unittest discover -s client/test -p "*_test.py"
 ```
+These cover the server and the client's app shell, but there's no JS unit test runner yet (Phase
+11). Phase 8's client UI was verified manually with a Playwright-driven browser session against
+the running app instead — `playwright` is in `environment.yml` for that purpose; run
+`python -m playwright install chromium` once after creating/updating the env if you want to do
+the same.
 
 ## Scripts
 Bash scripts in `scripts/` (run from the repo root, or anywhere — they `cd` to the repo root
@@ -357,25 +367,36 @@ captured, plus the client UI that was deferred when Phase 6 shipped:
   `POST /api/prioritizer/train` and reports whether training actually ran
   (`api.js:trainPrioritizer`); a persistent trained/untrained status indicator is Phase 10.
 
-### Phase 8 — Task organization & editing (client usability)
-The task list today (`views.js`/`app.js`) is flat, ordered only by creation order, and
-uneditable from the UI even though the server already supports more — pure client work against
-existing APIs:
-- Edit-in-place for a task, calling the already-working `PUT /api/tasks/<id>`
-  (`task_routes.py:update_task`).
-- Sorting/grouping: by priority score (already returned by `/api/plan/today`), by deadline, or by
-  `task_type`/`task_subtype` (already collected on every task but never used for grouping in the
-  UI).
-- Managed type/subtype categories: `task_type`/`task_subtype` are free-text inputs today
-  (`index.html`'s task form), so the same category ends up spelled inconsistently ("work" vs.
-  "Work") and silently fragments grouping/filtering. Replace the inputs with a dropdown populated
-  from the categories already in use by the user (derived client-side from their existing tasks,
-  with an "add new category" option) so picking one is just a selection, not free typing.
-- Filtering: hide done tasks (or a dedicated "done" tab), filter the task list by `task_type`
-  and/or `task_subtype` (via the dropdowns above) in combination, and search by name.
-- Visual urgency cues: overdue tasks (deadline at/before today) get a distinct style, surfacing in
-  the UI the same overdue/not-yet-due split `FormulaPrioritizer.urgency` already makes internally
-  (`d_i <= 0`), instead of that distinction only showing up as a score difference.
+### Phase 8 — Task organization & editing (client usability) (done)
+The task list was flat, ordered only by creation order, and uneditable from the UI even though
+the server already supported more — this phase is pure client work against existing APIs
+(`client/src/webapp/static/js/views.js`, `app.js`, `index.html`):
+- **Edit-in-place**: an "Edit" button (alongside Log/Done/Delete) swaps a task's display row for
+  an inline form (`Views`'s `buildEditItem`) prefilled with its current fields; Save calls the
+  already-working `PUT /api/tasks/<id>` (`task_routes.py:update_task`, `api.js:updateTask`), Cancel
+  reverts without a server round-trip. `app.js` tracks which task (if any) is being edited
+  (`editingTaskId`) and re-renders the list around it.
+- **Sorting**: a "Sort" dropdown over the fetched task list — by priority score (read from the
+  same `/api/plan/today` response already fetched for "Today's plan", via a `task_id -> score`
+  map; tasks outside today's plan, e.g. done ones, sort last), by deadline, or by
+  `task_type`/`task_subtype`/name (mirroring `PrioritizerService.rank`'s own tie-break order).
+- **Managed type/subtype categories**: `task_type`/`task_subtype` are no longer free-text inputs.
+  Both the "New task" form and the edit-in-place form use a `<select>` populated from the distinct
+  categories already used across the user's tasks (computed client-side in `app.js`), plus a
+  "+ Add new..." option that reveals a text input — so picking an existing category is one
+  selection, and typos no longer silently fragment grouping/filtering (`Views.wireCategoryField`/
+  `readCategoryField`).
+- **Filtering**: a "Show completed" checkbox (off by default, hiding done tasks), `task_type`/
+  `task_subtype` filter dropdowns (populated the same way, via `Views.populateFilterSelect`), and
+  a name search box — all combine (AND) over the client-side task list, no new endpoints needed.
+- **Visual urgency cues**: overdue tasks (deadline at/before today, not done) get a distinct
+  pastel-red style (`.task-item.overdue`), surfacing in the UI the same overdue/not-yet-due split
+  `FormulaPrioritizer.urgency` already makes internally (`d_i <= 0`), instead of that distinction
+  only showing up as a score difference.
+
+Verified end to end with a Playwright-driven browser run (register/login, create overdue and
+upcoming tasks across categories, exercise every filter/sort/edit control, confirm the rendered
+DOM and styling) on top of the existing `client/test/Client_test.py` smoke coverage.
 
 ### Phase 9 — Time visualization (weekly/calendar view)
 The main missing user-facing capability: today the user only ever sees a single day's plan, never
@@ -460,14 +481,14 @@ roadmap phase that owns them (see above for full descriptions).
   `PrioritizerTrainer`'s current proxy (done tasks vs. currently-open tasks)
 - [x] Client UI to trigger `/api/prioritizer/train`
 - [x] Client UI for logging partial hours worked ("Log hours" action)
-### Phase 8 — Task organization & editing
-- [ ] Edit-in-place for a task in the client (`PUT /api/tasks/<id>` already exists server-side)
-- [ ] Sort tasks by score, deadline, or type/subtype in the client
-- [ ] Replace the free-text type/subtype inputs with dropdowns populated from the user's
+### Phase 8 — Task organization & editing (done)
+- [x] Edit-in-place for a task in the client (`PUT /api/tasks/<id>` already exists server-side)
+- [x] Sort tasks by score, deadline, or type/subtype in the client
+- [x] Replace the free-text type/subtype inputs with dropdowns populated from the user's
   existing categories
-- [ ] Filter the task list by type and/or subtype (via the dropdowns above)
-- [ ] Filter/search tasks (hide done, search by name)
-- [ ] Visual styling for overdue tasks in the task list
+- [x] Filter the task list by type and/or subtype (via the dropdowns above)
+- [x] Filter/search tasks (hide done, search by name)
+- [x] Visual styling for overdue tasks in the task list
 ### Phase 9 — Time visualization
 - [ ] `GET /api/plan/week` multi-day plan endpoint (server)
 - [ ] Week-view grid in the client (7-day plan + hours per day)
