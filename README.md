@@ -340,9 +340,46 @@ than replacing it, built so the storage/training plumbing isn't tied to any one 
   `DailyPlanner` via `PrioritizerService`, so a freshly trained model is picked up by
   `/api/plan/today` immediately, with no redeploy.
 
-Not yet done: there's no client UI to trigger training or show whether a user's network is
-active, and the negative-example heuristic above is a first cut, not validated against real
-usage yet.
+**Known gaps**, split by where they get addressed:
+
+User-visible, tracked under Phase 10 (Personalization visibility):
+- No client UI to trigger training or show whether a user's network is active — the only signal
+  today is the one-shot `{"trained": bool}` response from `POST /api/prioritizer/train`.
+- No way to read a user's model status without retraining. `ModelWeightsDAO.upsert` already
+  stores an `updated_at` timestamp per save (`server/src/data/db/ModelWeightsDAO.py`), but nothing
+  reads it back — there's no `GET /api/prioritizer/status` to answer "is there a trained model,
+  and when was it last updated" as a side-effect-free check.
+- No way to discard a trained model and fall back to formula-only scoring. `ModelStore.delete`
+  exists and is unit-tested, but no route calls it, so a user stuck with a model trained on bad
+  signal (e.g. a few mis-clicked completions) has no way to reset it short of editing the database.
+- The negative-example heuristic (Phase 7's completion snapshots, plus all currently-open tasks)
+  is a reasonable first cut but unvalidated against real usage — showing the formula score and the
+  learned-correction score side by side (already on the Phase 10 list below) is what would surface
+  whether it's actually working.
+
+Internal/robustness, tracked under Phase 11 (Hardening & polish):
+- `FeatureExtractor`'s five features (`effort_days`, `days_remaining`, `importance`, `urgency`,
+  `formula_score`) are fed into the network unnormalized despite spanning very different numeric
+  ranges — `urgency`/`formula_score` can grow large (even unbounded near a deadline, see the
+  `r_i -> +inf` note above), and an unscaled large-magnitude feature can dominate gradient updates
+  on the tiny per-user datasets this trains on.
+- `score()` calls `model.predict()` once per task, so ranking a user's full list means one Keras
+  call per task instead of one batched call across all of them.
+- `fit()` always runs a fixed 50 epochs with no train/validation split, early stopping, or
+  regularization — on a small single-user dataset this risks memorizing noise with no way to
+  detect it.
+- Persisted weights are tied to today's `FEATURE_ORDER` and architecture (`HIDDEN_UNITS`); any
+  future change to `FeatureExtractor` breaks loading existing users' stored weights with a
+  shape-mismatch exception instead of a graceful fallback to formula-only scoring.
+- `PrioritizerNetwork._cache` is an in-memory, per-process dict — fine for today's single-process
+  dev server, but would serve stale models across workers in a multi-process deployment, with no
+  invalidation path.
+- No lock/guard around training: two concurrent `POST /api/prioritizer/train` calls for the same
+  user race on `ModelStore.save`, last write wins.
+- Weight (de)serialization uses `pickle` (`PrioritizerNetwork._serialize`/`_deserialize`) — safe
+  today since it only ever reads back what this same code wrote, but worth flagging now so it
+  isn't missed if model weights are ever exposed via an import/export feature later
+  (`pickle.loads` on untrusted bytes is a remote-code-execution risk).
 
 ### Phase 7 — Task lifecycle completeness (done)
 Closes the two functional gaps left over from Phase 6, both about how task completion data is
@@ -417,12 +454,20 @@ a forward-looking view of their week.
 
 ### Phase 10 — Personalization visibility
 Surfaces the Phase 6 `PrioritizerNetwork` model, which already trains and scores server-side but
-is invisible to the user:
-- A status indicator ("learning" / "active" / "not enough data yet"), driven by
-  `POST /api/prioritizer/train`'s existing `{"trained": bool}` response.
+is invisible to the user — closes the user-visible gaps listed under Phase 6 above:
+- New server capability: `GET /api/prioritizer/status` — whether the authenticated user has a
+  trained model and, if so, its `updated_at` (already stored by `ModelWeightsDAO.upsert`, just
+  never read back), as a side-effect-free check that doesn't itself trigger training.
+- New server capability: `DELETE /api/prioritizer/model` (or similar) to discard a user's trained
+  model and revert to formula-only scoring, wiring up the already-implemented but unused
+  `ModelStore.delete`.
+- Client: a status indicator ("learning" / "active" / "not enough data yet"), driven by the new
+  status endpoint (falling back to `POST /api/prioritizer/train`'s `{"trained": bool}` response
+  right after a manual train action), plus a "reset" control calling the new delete endpoint.
 - A manual "retrain" action and/or an automatic trigger after N completions.
 - Optionally, show the formula score and the learned-correction score side by side, so a user can
-  see why ranking changed after training instead of just observing a re-sort.
+  see why ranking changed after training instead of just observing a re-sort — also the most
+  direct way to sanity-check Phase 6's negative-example heuristic against real usage.
 
 ### Phase 11 — Hardening & polish
 - JS unit tests for `views.js`/`app.js`/`api.js` — today only `client/test/Client_test.py` exists
@@ -431,6 +476,19 @@ is invisible to the user:
 - Documentation for the server and client (module-level docs beyond this README).
 - Installation, uninstallation and update scripts, reusing/extending the existing
   `scripts/run.sh` and `scripts/reset_db.sh` rather than duplicating them.
+- `PrioritizerNetwork`/`PrioritizerTrainer` robustness (see the "Internal/robustness" gaps listed
+  under Phase 6 above for the reasoning behind each):
+  - Normalize `FeatureExtractor`'s feature vector before it reaches the network instead of feeding
+    in raw, differently-scaled values.
+  - Batch `model.predict()` across a user's tasks for one ranking pass instead of one call per task.
+  - Add a train/validation split (or at least early stopping) to `fit()` instead of always running
+    a fixed 50 epochs on whatever data is available.
+  - Version the stored weights against `FEATURE_ORDER`/`HIDDEN_UNITS` so a future architecture
+    change falls back to formula-only scoring for existing users instead of crashing on load.
+  - Guard against concurrent `POST /api/prioritizer/train` calls for the same user racing on
+    `ModelStore.save`.
+  - Invalidate/refresh `PrioritizerNetwork._cache` correctly if the server ever runs as more than
+    one process/worker.
 
 ### Phase 12 — Recurring (cyclic) tasks
 Today every task is a one-off: a chore that comes back every week has to be re-created by hand
@@ -495,8 +553,13 @@ roadmap phase that owns them (see above for full descriptions).
 - [ ] Per-day load indicator using `PrioritizerService.diagnostics()` thresholds
 - [ ] Deadline markers on the week view
 ### Phase 10 — Personalization visibility
+- [ ] `GET /api/prioritizer/status` (trained?/`updated_at`) — server, reads `ModelWeightsDAO`
+  without retraining
+- [ ] `DELETE /api/prioritizer/model` (or similar) to reset a user's model to formula-only scoring
+  — server, wires up the already-implemented `ModelStore.delete`
 - [ ] Client UI showing whether a user has a trained `PrioritizerNetwork` ("learning" / "active" /
-  "not enough data yet")
+  "not enough data yet"), driven by the status endpoint above
+- [ ] Client "reset model" control calling the delete endpoint above
 - [ ] Manual or auto-triggered retrain action in the client
 - [ ] Optional: show formula score vs. learned-correction score side by side
 ### Phase 11 — Hardening & polish
@@ -506,6 +569,13 @@ roadmap phase that owns them (see above for full descriptions).
 - [ ] Create the installation script
 - [ ] Create the uninstallation script
 - [ ] Create the update script
+- [ ] Normalize `FeatureExtractor`'s feature vector before it reaches `PrioritizerNetwork`
+- [ ] Batch `PrioritizerNetwork.score`'s `model.predict()` calls across a user's task list
+- [ ] Add a train/validation split or early stopping to `PrioritizerNetwork.fit`
+- [ ] Version persisted model weights against `FEATURE_ORDER`/`HIDDEN_UNITS` so architecture
+  changes fall back to formula-only scoring instead of crashing on load
+- [ ] Guard against concurrent `POST /api/prioritizer/train` calls for the same user
+- [ ] Make `PrioritizerNetwork._cache` safe for a multi-process/worker deployment
 ### Phase 12 — Recurring (cyclic) tasks
 - [ ] Recurrence rule on a task (interval/unit, optional end date) - server schema + storage
 - [ ] Completing a recurring task spawns its next occurrence instead of just marking it done
