@@ -33,6 +33,12 @@ class TaskDAO(object):
             (name, deadline, expected_duration_h, importance, task_type, task_subtype, task_id),
         )
 
+    def update_duration(self, task_id: int, expected_duration_h: float) -> None:
+        self.db.execute(
+            "UPDATE tasks SET expected_duration_h = ? WHERE task_id = ?",
+            (expected_duration_h, task_id),
+        )
+
     def mark_done(self, task_id: int, completed_at: str) -> None:
         self.db.execute(
             "UPDATE tasks SET done = 1, completed_at = ? WHERE task_id = ?",

@@ -1,6 +1,7 @@
 import unittest
 from datetime import datetime, timedelta
 
+from server.src.data.db.CompletionSnapshotDAO import CompletionSnapshotDAO
 from server.src.data.db.DB import DB
 from server.src.data.db.ModelWeightsDAO import ModelWeightsDAO
 from server.src.data.db.TaskDAO import TaskDAO
@@ -110,7 +111,7 @@ class PrioritizerTrainerTest(unittest.TestCase):
 
     def setUp(self):
         self.db = DB(":memory:").connect()
-        self.task_manager = TaskManager(TaskDAO(self.db))
+        self.task_manager = TaskManager(TaskDAO(self.db), CompletionSnapshotDAO(self.db))
         users = UserManager(UserDAO(self.db))
         self.user_id = users.create_user("alice", "s3cret", "alice@example.com").user_id
         self.store = SqliteModelStore(ModelWeightsDAO(self.db))
@@ -141,6 +142,31 @@ class PrioritizerTrainerTest(unittest.TestCase):
 
         self.assertTrue(self.trainer.train(self.user_id))
         self.assertIsNotNone(self.store.load(self.user_id, PrioritizerNetwork.MODEL_TYPE))
+
+    def test_build_examples_uses_completion_snapshot_for_accurate_negatives(self):
+        a = self.task_manager.create_task(
+            user_id=self.user_id, name="a", deadline=REFERENCE, expected_duration_h=1.0, importance=5,
+        )
+        self.task_manager.create_task(
+            user_id=self.user_id, name="b", deadline=REFERENCE, expected_duration_h=1.0, importance=1,
+        )
+        self.task_manager.mark_done(a.task_id, REFERENCE)
+        # Created only after a's completion: must not be treated as a negative for a's snapshot.
+        self.task_manager.create_task(
+            user_id=self.user_id, name="c", deadline=REFERENCE, expected_duration_h=1.0, importance=1,
+        )
+
+        examples = self.trainer._build_examples(self.user_id)
+        snapshot_examples = {(task.name, reference_date, label) for task, reference_date, label in examples
+                              if reference_date == REFERENCE}
+        current_negatives = {task.name for task, reference_date, label in examples
+                              if label == 0 and reference_date != REFERENCE}
+
+        self.assertIn(("a", REFERENCE, 1), snapshot_examples)
+        self.assertIn(("b", REFERENCE, 0), snapshot_examples)
+        self.assertNotIn(("c", REFERENCE, 0), snapshot_examples)
+        # c is still open "now" though, so it's still valid signal via the current-open fallback.
+        self.assertIn("c", current_negatives)
 
 
 if __name__ == "__main__":

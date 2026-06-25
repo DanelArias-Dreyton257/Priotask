@@ -29,7 +29,7 @@ export const Views = {
         document.getElementById("message-banner").classList.add("hidden");
     },
 
-    renderTasks(tasks, { onComplete, onDelete }) {
+    renderTasks(tasks, { onComplete, onDelete, onLogHours }) {
         const list = document.getElementById("task-list");
         list.innerHTML = "";
 
@@ -55,6 +55,20 @@ export const Views = {
             if (!task.done) {
                 const actions = document.createElement("div");
                 actions.className = "task-actions";
+
+                const logHoursForm = document.createElement("form");
+                logHoursForm.className = "log-hours-form";
+                logHoursForm.innerHTML = `
+                    <input type="number" min="0.5" step="0.5" placeholder="Hours" required>
+                    <button type="submit">Log hours</button>
+                `;
+                logHoursForm.addEventListener("submit", (event) => {
+                    event.preventDefault();
+                    const input = logHoursForm.querySelector("input");
+                    onLogHours(task.task_id, Number(input.value));
+                    input.value = "";
+                });
+                actions.appendChild(logHoursForm);
 
                 const completeButton = document.createElement("button");
                 completeButton.textContent = "Done";

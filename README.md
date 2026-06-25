@@ -2,7 +2,7 @@
 Priotask helps manage and prioritize tasks for effective time management, allowing users to quickly focus on important tasks and meet deadlines. It streamlines manual workload management.
 
 ## Getting Started
-Everything needed to run Phases 1-6 locally and try the app end to end.
+Everything needed to run Phases 1-7 locally and try the app end to end.
 
 ### 1. Set up the environment
 ```
@@ -46,8 +46,12 @@ Open `http://localhost:5500` in a browser:
 2. Add a task with the **New task** form (name, deadline, effort in hours, importance 1-10).
 3. The task shows up under **Your tasks**, and **Today's plan** shows the recommended hours to
    spend on it today (`DailyPlanner`, Phase 3) alongside its priority rank.
-4. **Done** marks a task complete, **Delete** removes it; both refresh **Today's plan**
-   automatically. The **Refresh plan** button re-fetches the plan with a different hours budget.
+4. **Done** marks a task complete, **Delete** removes it, and **Log hours** logs partial progress
+   (subtracting from the task's remaining effort, auto-completing it once none is left); all three
+   refresh **Today's plan** automatically. The **Refresh plan** button re-fetches the plan with a
+   different hours budget.
+5. **Train priority model** fits the user's `PrioritizerNetwork` (Phase 6) on their task history so
+   far — it reports whether there was enough completion history to actually train on.
 
 ### 5. Run the tests
 ```
@@ -97,17 +101,19 @@ Priotask/
     │   │   ├── app.py        # create_app(): wires DB/managers/services, registers blueprints, CORS
     │   │   ├── auth.py       # require_auth decorator (Bearer token -> g.user_id)
     │   │   ├── user_routes.py        # POST /users, /auth/login, /auth/logout
-    │   │   ├── task_routes.py        # CRUD for /tasks (+ /tasks/<id>/complete)
+    │   │   ├── task_routes.py        # CRUD for /tasks (+ /complete, /log-hours, Phase 7)
     │   │   ├── plan_routes.py        # GET /plan/today (DailyPlanner, Phase 3)
     │   │   └── prioritizer_routes.py # POST /prioritizer/train (PrioritizerTrainer, Phase 6)
     │   ├── data/
-    │   │   ├── db/           # DB access: DB.py (sqlite3, schema for users/tasks/model_weights),
-    │   │   │                 # TaskDAO/UserDAO/ModelWeightsDAO
+    │   │   ├── db/           # DB access: DB.py (sqlite3, schema for users/tasks/model_weights/
+    │   │   │                 # completion_snapshots), TaskDAO/UserDAO/ModelWeightsDAO/
+    │   │   │                 # CompletionSnapshotDAO (Phase 7)
     │   │   ├── domain/       # Domain models: Task, User (now carry persistence fields)
     │   │   └── dto/          # Wire-format dataclasses: TaskDTO, UserDTO
     │   ├── remote/           # Client-server link: RemoteFacade, TokenManager (stubs)
     │   └── services/
-    │       ├── TaskManager.py       # Task CRUD + domain<->DTO mapping (done)
+    │       ├── TaskManager.py       # Task CRUD + domain<->DTO mapping, completion snapshots
+    │       │                       # and partial-hours logging (Phase 7)
     │       ├── UserManager.py       # User CRUD + password hashing (done)
     │       ├── AuthService.py       # Bearer token issuing/lookup, in-memory (Phase 4, done)
     │       └── Prioritizer/         # See "The Prioritization Model" below
@@ -255,7 +261,8 @@ layers from Phases 1-3 over HTTP, run via `python -m server.src.Server`:
 - `POST /api/auth/login` / `POST /api/auth/logout` — issue/revoke a bearer token
   (`AuthService`, in-memory token store, no expiry yet — restarting the server logs everyone out).
 - `GET /api/tasks`, `POST /api/tasks`, `GET|PUT|DELETE /api/tasks/<id>`,
-  `POST /api/tasks/<id>/complete` — task CRUD, scoped to the authenticated user
+  `POST /api/tasks/<id>/complete`, `POST /api/tasks/<id>/log-hours` — task CRUD plus completion
+  and partial-progress logging (Phase 7), scoped to the authenticated user
   (`Authorization: Bearer <token>`); tasks belonging to another user 404.
 - `GET /api/plan/today?hours=<n>` — today's plan: ranked tasks + `recommended_hours_today`
   from `DailyPlanner` (Phase 3), `hours` overrides the default daily budget.
@@ -323,18 +330,28 @@ Not yet done: there's no client UI to trigger training or show whether a user's 
 active, and the negative-example heuristic above is a first cut, not validated against real
 usage yet.
 
-### Phase 7 — Task lifecycle completeness
+### Phase 7 — Task lifecycle completeness (done)
 Closes the two functional gaps left over from Phase 6, both about how task completion data is
 captured, plus the client UI that was deferred when Phase 6 shipped:
-- Let a task be marked partially done by logging `n` hours worked (e.g.
-  `POST /api/tasks/<id>/log-hours`), subtracting from `expected_duration_h` instead of only
-  supporting an all-or-nothing `complete`. Decide whether individual log entries are kept (useful
-  as richer training signal for Phase 6) or only the running total is stored.
-- Capture a real per-completion snapshot of "tasks on the table" instead of
-  `PrioritizerTrainer`'s current proxy (done tasks vs. currently-open tasks) — needs a new
-  table/column recording which task IDs were open at the moment of each completion.
-- Client UI for both: an "I worked N hours" action next to "Done"/"Delete" on each task, and a way
-  to trigger `POST /api/prioritizer/train` (status display is Phase 10).
+- **Partial completion**: `POST /api/tasks/<id>/log-hours` (`TaskManager.log_hours`) logs `n`
+  hours worked, subtracting from `expected_duration_h` instead of only supporting an all-or-nothing
+  `complete`. Only the running total is kept (no per-entry log) — `expected_duration_h` itself is
+  the record. If logging hours brings the remaining effort to zero, the task is marked done
+  automatically, through the same path (and the same completion snapshot, see below) as
+  `complete`.
+- **Real per-completion snapshots**: `TaskManager.mark_done` now records a `CompletionSnapshot`
+  (new `completion_snapshots` table, `CompletionSnapshotDAO`) — the completed task's ID, the
+  completion timestamp, and the IDs of every other task that was still open *at that exact
+  moment*. `PrioritizerTrainer._build_examples` (Phase 6) uses these snapshots as its primary
+  signal: the completed task is a positive example, the snapshot's open tasks are negatives, both
+  scored as of that completion's timestamp — replacing the old proxy that only ever compared
+  *all-time-done* tasks against *currently-open* tasks. Tasks still open right now are still added
+  as a supplementary negative signal scored as of now (valid even before any completion history
+  exists, e.g. a brand-new account), so training doesn't regress for accounts with little history.
+- **Client UI for both**: an inline "Log hours" form next to "Done"/"Delete" on each task
+  (`views.js`/`app.js`/`api.js:logHours`), and a "Train priority model" button that calls
+  `POST /api/prioritizer/train` and reports whether training actually ran
+  (`api.js:trainPrioritizer`); a persistent trained/untrained status indicator is Phase 10.
 
 ### Phase 8 — Task organization & editing (client usability)
 The task list today (`views.js`/`app.js`) is flat, ordered only by creation order, and
@@ -386,13 +403,13 @@ is invisible to the user:
 ## The TODO List
 This section presents all the tasks that need to be done to complete the project, grouped by the
 roadmap phase that owns them (see above for full descriptions).
-### Phase 7 — Task lifecycle completeness
-- [ ] Let a task be marked as partially done by logging `n` hours worked, subtracting that from
+### Phase 7 — Task lifecycle completeness (done)
+- [x] Let a task be marked as partially done by logging `n` hours worked, subtracting that from
   `expected_duration_h` instead of only supporting an all-or-nothing `complete`
-- [ ] Capture a real per-completion snapshot of "tasks on the table" instead of
+- [x] Capture a real per-completion snapshot of "tasks on the table" instead of
   `PrioritizerTrainer`'s current proxy (done tasks vs. currently-open tasks)
-- [ ] Client UI to trigger `/api/prioritizer/train`
-- [ ] Client UI for logging partial hours worked ("I worked N hours" action)
+- [x] Client UI to trigger `/api/prioritizer/train`
+- [x] Client UI for logging partial hours worked ("Log hours" action)
 ### Phase 8 — Task organization & editing
 - [ ] Edit-in-place for a task in the client (`PUT /api/tasks/<id>` already exists server-side)
 - [ ] Sort tasks by score, deadline, or type/subtype in the client

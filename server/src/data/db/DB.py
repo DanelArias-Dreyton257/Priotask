@@ -32,6 +32,15 @@ CREATE TABLE IF NOT EXISTS model_weights (
     PRIMARY KEY (user_id, model_type),
     FOREIGN KEY (user_id) REFERENCES users (user_id)
 );
+
+CREATE TABLE IF NOT EXISTS completion_snapshots (
+    snapshot_id INTEGER PRIMARY KEY AUTOINCREMENT,
+    user_id INTEGER NOT NULL,
+    completed_task_id INTEGER NOT NULL,
+    completed_at TEXT NOT NULL,
+    open_task_ids TEXT NOT NULL,
+    FOREIGN KEY (user_id) REFERENCES users (user_id)
+);
 """
 
 

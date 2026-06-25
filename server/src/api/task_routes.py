@@ -72,6 +72,24 @@ def update_task(task_id: int):
     return jsonify(asdict(current_app.task_manager.get_task(task_id)))
 
 
+@task_bp.post("/tasks/<int:task_id>/log-hours")
+@require_auth
+def log_hours(task_id: int):
+    if _get_owned_task(task_id) is None:
+        return jsonify(error="task not found"), 404
+
+    body = request.get_json(silent=True) or {}
+    try:
+        hours = float(body["hours"])
+    except (KeyError, TypeError, ValueError):
+        return jsonify(error="hours must be a number"), 400
+    if hours <= 0:
+        return jsonify(error="hours must be greater than 0"), 400
+
+    updated = current_app.task_manager.log_hours(task_id, hours)
+    return jsonify(asdict(updated))
+
+
 @task_bp.post("/tasks/<int:task_id>/complete")
 @require_auth
 def complete_task(task_id: int):

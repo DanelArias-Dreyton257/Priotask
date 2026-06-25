@@ -4,6 +4,7 @@ from server.src.api.plan_routes import plan_bp
 from server.src.api.prioritizer_routes import prioritizer_bp
 from server.src.api.task_routes import task_bp
 from server.src.api.user_routes import user_bp
+from server.src.data.db.CompletionSnapshotDAO import CompletionSnapshotDAO
 from server.src.data.db.DB import DB
 from server.src.data.db.ModelWeightsDAO import ModelWeightsDAO
 from server.src.data.db.TaskDAO import TaskDAO
@@ -28,7 +29,7 @@ def create_app(db_path: str = "priotask.db") -> Flask:
 
     db = DB(db_path).connect()
     app.user_manager = UserManager(UserDAO(db))
-    app.task_manager = TaskManager(TaskDAO(db))
+    app.task_manager = TaskManager(TaskDAO(db), CompletionSnapshotDAO(db))
     app.auth_service = AuthService(app.user_manager)
 
     # PrioritizerNetwork falls back to FormulaPrioritizer's own score until a

@@ -1,17 +1,29 @@
+import json
 import sqlite3
 from datetime import datetime
-from typing import List, Optional
+from typing import List, NamedTuple, Optional
 
+from server.src.data.db.CompletionSnapshotDAO import CompletionSnapshotDAO
 from server.src.data.db.TaskDAO import TaskDAO
 from server.src.data.domain.Task import Task
 from server.src.data.dto.TaskDTO import TaskDTO
 
 
+class CompletionSnapshot(NamedTuple):
+    """A completion event plus the IDs of the other tasks that were still
+    open at that moment - the real training signal PrioritizerTrainer needs,
+    in place of its earlier done-vs-currently-open proxy (Phase 6/7)."""
+    completed_task_id: int
+    completed_at: datetime
+    open_task_ids: List[int]
+
+
 class TaskManager:
     """CRUD layer between TaskDAO (raw rows) and the rest of the app (Task/TaskDTO)."""
 
-    def __init__(self, dao: Optional[TaskDAO] = None):
+    def __init__(self, dao: Optional[TaskDAO] = None, snapshot_dao: Optional[CompletionSnapshotDAO] = None):
         self.dao = dao or TaskDAO()
+        self.snapshot_dao = snapshot_dao or CompletionSnapshotDAO()
 
     def _row_to_domain(self, row: sqlite3.Row) -> Task:
         return Task(
@@ -73,9 +85,45 @@ class TaskManager:
         )
 
     def mark_done(self, task_id: int, completed_at: Optional[datetime] = None) -> None:
-        """Persist completion. Needed later as the Phase 6 training signal for PrioritizerNetwork."""
+        """Persist completion, snapshotting which other tasks were still open
+        at this moment - the Phase 6 training signal for PrioritizerNetwork."""
         completed_at = completed_at or datetime.now()
+        task = self.get_task(task_id)
+        if task is not None:
+            open_ids = [
+                t.task_id for t in self.get_tasks_for_user(task.user_id)
+                if not t.done and t.task_id != task_id
+            ]
+            self.snapshot_dao.add_snapshot(
+                task.user_id, task_id, completed_at.isoformat(), json.dumps(open_ids),
+            )
         self.dao.mark_done(task_id, completed_at.isoformat())
+
+    def log_hours(self, task_id: int, hours_worked: float,
+                   completed_at: Optional[datetime] = None) -> Optional[TaskDTO]:
+        """Logs hours_worked against a task's remaining effort. If that
+        brings the remaining effort to zero, the task is marked done (same
+        completion signal/snapshot as mark_done)."""
+        row = self.dao.get_task(task_id)
+        if row is None:
+            return None
+        task = self._row_to_domain(row)
+        remaining = max(0.0, task.expected_duration_h - hours_worked)
+        self.dao.update_duration(task_id, remaining)
+        if remaining <= 0 and not task.done:
+            self.mark_done(task_id, completed_at)
+        return self.get_task(task_id)
+
+    def get_completion_snapshots(self, user_id: int) -> List[CompletionSnapshot]:
+        rows = self.snapshot_dao.get_snapshots_for_user(user_id)
+        return [
+            CompletionSnapshot(
+                completed_task_id=row["completed_task_id"],
+                completed_at=datetime.fromisoformat(row["completed_at"]),
+                open_task_ids=json.loads(row["open_task_ids"]),
+            )
+            for row in rows
+        ]
 
     def delete_task(self, task_id: int) -> None:
         self.dao.delete_task(task_id)

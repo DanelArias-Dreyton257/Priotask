@@ -14,11 +14,12 @@ class PrioritizerTrainer:
     """
     Builds the Phase 6 training set from a user's task history and fits
     PrioritizerNetwork on it. The label approximates "the user picked this
-    task to work on": done tasks are positives, scored at the moment they
-    were completed; the user's still-open tasks are negatives, scored as of
-    now. That's not a true snapshot of every task that was on the table at
-    each completion - the schema from Phase 2 doesn't keep that history -
-    but it's the signal available without adding an event log.
+    task to work on": for each past completion, the completed task is a
+    positive example and the tasks still open at that exact moment (Phase 7's
+    `CompletionSnapshot`, captured by `TaskManager.mark_done`) are negatives,
+    both scored as of that completion's timestamp. Currently still-open tasks
+    are also added as negatives scored as of now - that signal stays valid
+    even before any completion history exists (e.g. a brand-new account).
     """
 
     def __init__(self, task_manager: Optional[TaskManager] = None, network: Optional[PrioritizerNetwork] = None):
@@ -26,14 +27,23 @@ class PrioritizerTrainer:
         self.network = network or PrioritizerNetwork()
 
     def _build_examples(self, user_id: int) -> List[TrainingExample]:
-        tasks = self.task_manager.get_domain_tasks_for_user(user_id)
-        now = datetime.now()
+        tasks_by_id = {task.task_id: task for task in self.task_manager.get_domain_tasks_for_user(user_id)}
         examples: List[TrainingExample] = []
-        for task in tasks:
-            if task.done and task.completed_at is not None:
-                examples.append((task, task.completed_at, 1))
-            elif not task.done:
+
+        for snapshot in self.task_manager.get_completion_snapshots(user_id):
+            completed_task = tasks_by_id.get(snapshot.completed_task_id)
+            if completed_task is not None:
+                examples.append((completed_task, snapshot.completed_at, 1))
+            for open_task_id in snapshot.open_task_ids:
+                open_task = tasks_by_id.get(open_task_id)
+                if open_task is not None:
+                    examples.append((open_task, snapshot.completed_at, 0))
+
+        now = datetime.now()
+        for task in tasks_by_id.values():
+            if not task.done:
                 examples.append((task, now, 0))
+
         return examples
 
     def train(self, user_id: int) -> bool:

@@ -104,6 +104,64 @@ class ApiTest(unittest.TestCase):
         self.assertEqual(response.status_code, 200)
         self.assertTrue(response.get_json()["done"])
 
+    def test_log_hours_reduces_remaining_duration(self):
+        token = self._register_and_login()
+        task_id = self._create_task(token, expected_duration_h=4.0).get_json()["task_id"]
+
+        response = self.client.post(
+            f"/api/tasks/{task_id}/log-hours", json={"hours": 1.5}, headers=self._auth_headers(token),
+        )
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.get_json()["expected_duration_h"], 2.5)
+        self.assertFalse(response.get_json()["done"])
+
+    def test_log_hours_marks_task_done_when_remaining_reaches_zero(self):
+        token = self._register_and_login()
+        task_id = self._create_task(token, expected_duration_h=2.0).get_json()["task_id"]
+
+        response = self.client.post(
+            f"/api/tasks/{task_id}/log-hours", json={"hours": 5.0}, headers=self._auth_headers(token),
+        )
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.get_json()["expected_duration_h"], 0.0)
+        self.assertTrue(response.get_json()["done"])
+
+    def test_log_hours_rejects_non_positive_hours(self):
+        token = self._register_and_login()
+        task_id = self._create_task(token).get_json()["task_id"]
+
+        response = self.client.post(
+            f"/api/tasks/{task_id}/log-hours", json={"hours": 0}, headers=self._auth_headers(token),
+        )
+        self.assertEqual(response.status_code, 400)
+
+    def test_log_hours_rejects_invalid_body(self):
+        token = self._register_and_login()
+        task_id = self._create_task(token).get_json()["task_id"]
+
+        response = self.client.post(
+            f"/api/tasks/{task_id}/log-hours", json={}, headers=self._auth_headers(token),
+        )
+        self.assertEqual(response.status_code, 400)
+
+    def test_log_hours_on_another_users_task_404s(self):
+        token_a = self._register_and_login("alice", "s3cret", "a@x.com")
+        token_b = self._register_and_login("bob", "s3cret", "b@x.com")
+        task_id = self._create_task(token_a).get_json()["task_id"]
+
+        response = self.client.post(
+            f"/api/tasks/{task_id}/log-hours", json={"hours": 1.0}, headers=self._auth_headers(token_b),
+        )
+        self.assertEqual(response.status_code, 404)
+
+    def test_train_prioritizer_reports_not_trained_without_enough_signal(self):
+        token = self._register_and_login()
+        self._create_task(token)
+
+        response = self.client.post("/api/prioritizer/train", headers=self._auth_headers(token))
+        self.assertEqual(response.status_code, 200)
+        self.assertFalse(response.get_json()["trained"])
+
     def test_delete_task_removes_it(self):
         token = self._register_and_login()
         task_id = self._create_task(token).get_json()["task_id"]

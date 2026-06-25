@@ -13,13 +13,20 @@ const api = new ApiClient(window.PRIOTASK_API_BASE_URL);
 async function refreshTasksAndPlan() {
     const hours = document.getElementById("hours-input").value || undefined;
     const [tasks, plan] = await Promise.all([api.listTasks(), api.getTodayPlan(hours)]);
-    Views.renderTasks(tasks, { onComplete: completeTask, onDelete: deleteTask });
+    Views.renderTasks(tasks, { onComplete: completeTask, onDelete: deleteTask, onLogHours: logHours });
     Views.renderPlan(plan);
 }
 
 async function completeTask(taskId) {
     await runOrReportError(async () => {
         await api.completeTask(taskId);
+        await refreshTasksAndPlan();
+    });
+}
+
+async function logHours(taskId, hours) {
+    await runOrReportError(async () => {
+        await api.logHours(taskId, hours);
         await refreshTasksAndPlan();
     });
 }
@@ -104,6 +111,16 @@ document.getElementById("task-form").addEventListener("submit", (event) => {
 document.getElementById("plan-form").addEventListener("submit", (event) => {
     event.preventDefault();
     runOrReportError(refreshTasksAndPlan);
+});
+
+document.getElementById("train-button").addEventListener("click", () => {
+    runOrReportError(async () => {
+        const { trained } = await api.trainPrioritizer();
+        Views.showMessage(trained
+            ? "Priority model trained on your task history."
+            : "Not enough task history yet to train the priority model.");
+        await refreshTasksAndPlan();
+    });
 });
 
 // Resume an existing session (token survives page reloads via localStorage).

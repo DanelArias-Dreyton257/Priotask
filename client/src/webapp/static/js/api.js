@@ -71,6 +71,14 @@ export class ApiClient {
         return this._request("POST", `/api/tasks/${taskId}/complete`, { auth: true });
     }
 
+    logHours(taskId, hours) {
+        return this._request("POST", `/api/tasks/${taskId}/log-hours`, { body: { hours }, auth: true });
+    }
+
+    trainPrioritizer() {
+        return this._request("POST", "/api/prioritizer/train", { auth: true });
+    }
+
     deleteTask(taskId) {
         return this._request("DELETE", `/api/tasks/${taskId}`, { auth: true });
     }
