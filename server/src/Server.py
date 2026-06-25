@@ -1,7 +1,9 @@
+from server.src.api.app import create_app
+
 
 def main():
-    # TODO
-    pass
+    app = create_app()
+    app.run(debug=True)
 
 
 if __name__ == "__main__":
