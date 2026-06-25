@@ -1,0 +1,157 @@
+* {
+    box-sizing: border-box;
+}
+
+body {
+    font-family: system-ui, sans-serif;
+    margin: 0;
+    background: #f4f5f7;
+    color: #1f2430;
+}
+
+.hidden {
+    display: none !important;
+}
+
+header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 1rem 1.5rem;
+    background: #1f2430;
+    color: white;
+}
+
+header h1 {
+    margin: 0;
+    font-size: 1.4rem;
+}
+
+#user-bar {
+    display: flex;
+    align-items: center;
+    gap: 0.75rem;
+}
+
+#message-banner {
+    padding: 0.75rem 1.5rem;
+}
+
+#message-banner.error {
+    background: #ffe1e1;
+    color: #9b1c1c;
+}
+
+#message-banner.info {
+    background: #e1f0ff;
+    color: #1c5d9b;
+}
+
+main {
+    max-width: 900px;
+    margin: 1.5rem auto;
+    padding: 0 1rem;
+}
+
+.auth-forms {
+    display: flex;
+    gap: 1.5rem;
+    flex-wrap: wrap;
+}
+
+form {
+    display: flex;
+    flex-direction: column;
+    gap: 0.5rem;
+    background: white;
+    padding: 1rem;
+    border-radius: 8px;
+    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
+}
+
+input, button {
+    padding: 0.5rem;
+    font-size: 1rem;
+}
+
+button {
+    cursor: pointer;
+    border: none;
+    border-radius: 4px;
+    background: #2f6fed;
+    color: white;
+}
+
+button:hover {
+    background: #1f56c4;
+}
+
+.board {
+    display: flex;
+    gap: 1.5rem;
+    margin-top: 1.5rem;
+    flex-wrap: wrap;
+}
+
+#tasks-section, #plan-section {
+    flex: 1 1 320px;
+    background: white;
+    padding: 1rem;
+    border-radius: 8px;
+    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
+}
+
+ul {
+    list-style: none;
+    padding: 0;
+    margin: 0;
+}
+
+.task-item, .plan-item {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 0.5rem 0;
+    border-bottom: 1px solid #eee;
+    gap: 0.5rem;
+}
+
+.task-item.done {
+    opacity: 0.5;
+    text-decoration: line-through;
+}
+
+.task-info, .plan-item {
+    display: flex;
+    flex-direction: column;
+    gap: 0.15rem;
+}
+
+.task-actions {
+    display: flex;
+    gap: 0.4rem;
+}
+
+.task-actions button {
+    background: #6b7280;
+}
+
+.task-actions button:first-child {
+    background: #2e9e5b;
+}
+
+.empty {
+    color: #888;
+    padding: 0.5rem 0;
+}
+
+#plan-form {
+    flex-direction: row;
+    align-items: center;
+    margin-bottom: 0.75rem;
+}
+
+.score {
+    font-size: 0.85rem;
+    color: #888;
+}

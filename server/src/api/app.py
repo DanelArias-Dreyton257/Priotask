@@ -1,4 +1,4 @@
-from flask import Flask
+from flask import Flask, request
 
 from server.src.api.plan_routes import plan_bp
 from server.src.api.task_routes import task_bp
@@ -30,4 +30,26 @@ def create_app(db_path: str = "priotask.db") -> Flask:
     app.register_blueprint(task_bp, url_prefix="/api")
     app.register_blueprint(plan_bp, url_prefix="/api")
 
+    _enable_cors(app)
     return app
+
+
+def _enable_cors(app: Flask) -> None:
+    """
+    The Phase 5 web client is served from its own Flask process (a different
+    origin/port), so its fetch() calls need CORS headers. The API has no
+    cookies/sessions to protect against CSRF (auth is a bearer token the
+    client attaches itself), so allowing any origin is acceptable here.
+    """
+
+    @app.before_request
+    def _preflight():
+        if request.method == "OPTIONS":
+            return "", 204
+
+    @app.after_request
+    def _add_cors_headers(response):
+        response.headers["Access-Control-Allow-Origin"] = "*"
+        response.headers["Access-Control-Allow-Methods"] = "GET, POST, PUT, DELETE, OPTIONS"
+        response.headers["Access-Control-Allow-Headers"] = "Content-Type, Authorization"
+        return response
