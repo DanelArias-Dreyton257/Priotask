@@ -147,12 +147,15 @@ async function deleteTask(taskId) {
     });
 }
 
-async function runOrReportError(action) {
+async function runOrReportError(action, { treatAuthErrorAsSessionExpiry = true } = {}) {
     try {
         Views.clearMessage();
         await action();
     } catch (error) {
-        if (error instanceof ApiError && error.status === 401) {
+        // A 401 from login/register itself means "wrong credentials", not "your
+        // session expired" - there was no session yet, so don't relabel it and
+        // don't log out a user who was never logged in for this attempt.
+        if (treatAuthErrorAsSessionExpiry && error instanceof ApiError && error.status === 401) {
             logout();
             Views.showMessage("Session expired, please log in again.", true);
             return;
@@ -161,11 +164,24 @@ async function runOrReportError(action) {
     }
 }
 
+function reportEnterAppError(error) {
+    // A stored token can outlive the server's in-memory AuthService (e.g. a
+    // restart) - resuming with it should drop back to the login screen with
+    // the same wording as any other expired session, not leave the app
+    // looking authenticated while every request fails.
+    if (error instanceof ApiError && error.status === 401) {
+        logout();
+        Views.showMessage("Session expired, please log in again.", true);
+        return;
+    }
+    Views.showMessage(error.message, true);
+}
+
 function enterApp(username) {
     TokenStore.setUsername(username);
     Views.showAuthenticated(username);
-    refreshTasksAndPlan().catch((error) => Views.showMessage(error.message, true));
-    refreshPrioritizerStatus().catch((error) => Views.showMessage(error.message, true));
+    refreshTasksAndPlan().catch(reportEnterAppError);
+    refreshPrioritizerStatus().catch(reportEnterAppError);
 }
 
 function logout() {
@@ -181,7 +197,7 @@ document.getElementById("login-form").addEventListener("submit", (event) => {
         await api.login(form.get("username"), form.get("password"));
         enterApp(form.get("username"));
         Views.resetForm(event.target);
-    });
+    }, { treatAuthErrorAsSessionExpiry: false });
 });
 
 document.getElementById("register-form").addEventListener("submit", (event) => {
@@ -192,7 +208,7 @@ document.getElementById("register-form").addEventListener("submit", (event) => {
         await api.login(form.get("username"), form.get("password"));
         enterApp(form.get("username"));
         Views.resetForm(event.target);
-    });
+    }, { treatAuthErrorAsSessionExpiry: false });
 });
 
 document.getElementById("logout-button").addEventListener("click", () => {
