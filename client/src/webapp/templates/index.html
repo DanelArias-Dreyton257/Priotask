@@ -45,8 +45,10 @@
                     <input type="date" name="deadline" required>
                     <input type="number" name="expected_duration_h" placeholder="Effort (hours)" min="0" step="0.5" required>
                     <input type="number" name="importance" placeholder="Importance (1-10)" min="1" max="10" required>
-                    <input type="text" name="task_type" placeholder="Type (optional)">
-                    <input type="text" name="task_subtype" placeholder="Sub-type (optional)">
+                    <select name="task_type" id="new-task-type-select"></select>
+                    <input type="text" name="task_type_new" id="new-task-type-new" class="hidden" placeholder="New type">
+                    <select name="task_subtype" id="new-task-subtype-select"></select>
+                    <input type="text" name="task_subtype_new" id="new-task-subtype-new" class="hidden" placeholder="New sub-type">
                     <button type="submit">Add task</button>
                 </form>
             </section>
@@ -54,6 +56,17 @@
             <div class="board">
                 <section id="tasks-section">
                     <h2>Your tasks</h2>
+                    <div class="task-toolbar">
+                        <input type="text" id="task-search" placeholder="Search tasks...">
+                        <select id="task-type-filter"></select>
+                        <select id="task-subtype-filter"></select>
+                        <select id="task-sort">
+                            <option value="priority">Sort: priority</option>
+                            <option value="deadline">Sort: deadline</option>
+                            <option value="type">Sort: type</option>
+                        </select>
+                        <label class="checkbox-label"><input type="checkbox" id="show-done-checkbox"> Show completed</label>
+                    </div>
                     <ul id="task-list"></ul>
                 </section>
 

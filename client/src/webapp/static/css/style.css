@@ -69,7 +69,7 @@ form {
     box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
 }
 
-input, button {
+input, button, select {
     padding: 0.5rem;
     font-size: 1rem;
 }
@@ -121,10 +121,21 @@ ul {
     text-decoration: line-through;
 }
 
+.task-item.overdue {
+    background: #fff1f0;
+    border-left: 3px solid #d9534f;
+    padding-left: 0.5rem;
+}
+
 .task-info, .plan-item {
     display: flex;
     flex-direction: column;
     gap: 0.15rem;
+}
+
+.category {
+    font-size: 0.8rem;
+    color: #6b7280;
 }
 
 .task-actions {
@@ -143,11 +154,11 @@ ul {
     background: #6b7280;
 }
 
-.task-buttons-row button:first-child {
+.task-buttons-row .btn-done {
     background: #2e9e5b;
 }
 
-.task-buttons-row button:last-child {
+.task-buttons-row .btn-delete {
     background: #d9534f;
 }
 
@@ -180,4 +191,39 @@ ul {
 .score {
     font-size: 0.85rem;
     color: #888;
+}
+
+.task-toolbar {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.5rem;
+    align-items: center;
+    margin-bottom: 0.75rem;
+}
+
+.task-toolbar input, .task-toolbar select {
+    padding: 0.35rem;
+    font-size: 0.9rem;
+}
+
+.checkbox-label {
+    display: flex;
+    align-items: center;
+    gap: 0.3rem;
+    font-size: 0.9rem;
+}
+
+.task-edit-form {
+    width: 100%;
+    box-shadow: none;
+    padding: 0.5rem 0;
+}
+
+.task-item.editing {
+    flex-direction: column;
+    align-items: stretch;
+}
+
+.cancel-edit {
+    background: #6b7280;
 }
