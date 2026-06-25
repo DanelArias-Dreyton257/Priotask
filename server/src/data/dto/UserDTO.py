@@ -1,8 +1,10 @@
-class UserDTO:
-    def __init__(self, username, password, email):
-        self.username = username
-        self.password = password
-        self.email = email
+from dataclasses import dataclass
+from typing import Optional
 
-    def __repr__(self):
-        return f"UserDTO(username={self.username}, password={self.password}, email={self.email})"
+
+@dataclass
+class UserDTO:
+    """Wire-format view of a User. Never carries the password hash/salt."""
+    user_id: Optional[int]
+    username: str
+    email: str

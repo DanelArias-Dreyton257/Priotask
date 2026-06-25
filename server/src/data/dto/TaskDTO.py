@@ -1,9 +1,17 @@
-class TaskDTO:
-    def __init__(self, name, deadline, expected_duration, importance):
-        self.name = name
-        self.deadline = deadline
-        self.expected_duration = expected_duration
-        self.importance = importance
+from dataclasses import dataclass
+from typing import Optional
 
-    def __repr__(self):
-        return f"TaskDTO(name={self.name}, deadline={self.deadline}, expected_duration={self.expected_duration}, importance={self.importance})"
+
+@dataclass
+class TaskDTO:
+    """Wire-format view of a Task: deadline/completed_at as ISO 8601 strings, no behavior."""
+    task_id: Optional[int]
+    user_id: int
+    name: str
+    deadline: str
+    expected_duration_h: float
+    importance: int
+    task_type: str = ""
+    task_subtype: str = ""
+    done: bool = False
+    completed_at: Optional[str] = None
