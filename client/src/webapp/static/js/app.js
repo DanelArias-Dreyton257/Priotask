@@ -33,6 +33,11 @@ async function refreshWeekPlan() {
     Views.renderWeekPlan(days);
 }
 
+async function refreshPrioritizerStatus() {
+    const status = await api.getPrioritizerStatus();
+    Views.renderPrioritizerStatus(status);
+}
+
 function distinctValues(field) {
     return [...new Set(allTasks.map((task) => task[field]).filter(Boolean))].sort();
 }
@@ -160,6 +165,7 @@ function enterApp(username) {
     TokenStore.setUsername(username);
     Views.showAuthenticated(username);
     refreshTasksAndPlan().catch((error) => Views.showMessage(error.message, true));
+    refreshPrioritizerStatus().catch((error) => Views.showMessage(error.message, true));
 }
 
 function logout() {
@@ -253,6 +259,16 @@ document.getElementById("train-button").addEventListener("click", () => {
             ? "Priority model trained on your task history."
             : "Not enough task history yet to train the priority model.");
         await refreshTasksAndPlan();
+        await refreshPrioritizerStatus();
+    });
+});
+
+document.getElementById("reset-model-button").addEventListener("click", () => {
+    runOrReportError(async () => {
+        await api.resetPrioritizerModel();
+        Views.showMessage("Priority model reset; back to formula-only scoring.");
+        await refreshTasksAndPlan();
+        await refreshPrioritizerStatus();
     });
 });
 

@@ -173,7 +173,6 @@ ul {
 }
 
 #train-button {
-    margin-top: 0.75rem;
     background: #6b7280;
 }
 
@@ -294,6 +293,35 @@ ul {
 
 .day-load-label {
     font-size: 0.75rem;
+    color: #6b7280;
+}
+
+#prioritizer-status-section {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    margin-top: 1rem;
+    flex-wrap: wrap;
+}
+
+#prioritizer-status-section .prioritizer-status {
+    flex-basis: 100%;
+}
+
+#prioritizer-status-section button {
+    padding: 0.5rem 0.75rem;
+}
+
+.prioritizer-status {
+    font-size: 0.85rem;
+    color: #6b7280;
+}
+
+.prioritizer-status.active {
+    color: #2e9e5b;
+}
+
+.prioritizer-status.inactive {
     color: #6b7280;
 }
 

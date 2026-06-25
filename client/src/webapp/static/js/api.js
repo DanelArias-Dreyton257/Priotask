@@ -79,6 +79,14 @@ export class ApiClient {
         return this._request("POST", "/api/prioritizer/train", { auth: true });
     }
 
+    getPrioritizerStatus() {
+        return this._request("GET", "/api/prioritizer/status", { auth: true });
+    }
+
+    resetPrioritizerModel() {
+        return this._request("DELETE", "/api/prioritizer/model", { auth: true });
+    }
+
     deleteTask(taskId) {
         return this._request("DELETE", `/api/tasks/${taskId}`, { auth: true });
     }

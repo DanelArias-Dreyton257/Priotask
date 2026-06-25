@@ -110,6 +110,23 @@ export const Views = {
         form.reset();
     },
 
+    // Phase 10: surfaces whether the user's PrioritizerNetwork is trained
+    // (and when), driven by GET /api/prioritizer/status. The "reset" button
+    // only makes sense once there's a model to discard.
+    renderPrioritizerStatus({ trained, updated_at }) {
+        const status = document.getElementById("prioritizer-status");
+        const resetButton = document.getElementById("reset-model-button");
+        if (trained) {
+            const when = updated_at ? new Date(updated_at).toLocaleString() : "unknown time";
+            status.textContent = `Priority model: active (trained ${when})`;
+            status.className = "prioritizer-status active";
+        } else {
+            status.textContent = "Priority model: not enough data yet";
+            status.className = "prioritizer-status inactive";
+        }
+        resetButton.classList.toggle("hidden", !trained);
+    },
+
     // Phase 9: a 7(+)-day grid, one card per day - planned tasks/hours, a
     // load bar (planned hours vs. that day's capacity) and any deadlines
     // falling on that day even if no hours were scheduled for them.
