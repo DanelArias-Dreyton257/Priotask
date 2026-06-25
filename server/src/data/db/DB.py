@@ -38,7 +38,10 @@ class DB:
         self.connection: sqlite3.Connection | None = None
 
     def connect(self) -> "DB":
-        self.connection = sqlite3.connect(self.db_path)
+        # check_same_thread=False: Flask's dev server (and most WSGI servers)
+        # handle each request on its own thread, but this DB instance is a
+        # single connection shared across all of them.
+        self.connection = sqlite3.connect(self.db_path, check_same_thread=False)
         self.connection.row_factory = sqlite3.Row
         self.connection.execute("PRAGMA foreign_keys = ON")
         self.connection.executescript(SCHEMA)
