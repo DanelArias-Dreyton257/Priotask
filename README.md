@@ -366,7 +366,13 @@ existing APIs:
 - Sorting/grouping: by priority score (already returned by `/api/plan/today`), by deadline, or by
   `task_type`/`task_subtype` (already collected on every task but never used for grouping in the
   UI).
-- Filtering: hide done tasks (or a dedicated "done" tab), filter by type/subtype, search by name.
+- Managed type/subtype categories: `task_type`/`task_subtype` are free-text inputs today
+  (`index.html`'s task form), so the same category ends up spelled inconsistently ("work" vs.
+  "Work") and silently fragments grouping/filtering. Replace the inputs with a dropdown populated
+  from the categories already in use by the user (derived client-side from their existing tasks,
+  with an "add new category" option) so picking one is just a selection, not free typing.
+- Filtering: hide done tasks (or a dedicated "done" tab), filter the task list by `task_type`
+  and/or `task_subtype` (via the dropdowns above) in combination, and search by name.
 - Visual urgency cues: overdue tasks (deadline at/before today) get a distinct style, surfacing in
   the UI the same overdue/not-yet-due split `FormulaPrioritizer.urgency` already makes internally
   (`d_i <= 0`), instead of that distinction only showing up as a score difference.
@@ -404,6 +410,23 @@ is invisible to the user:
 - Installation, uninstallation and update scripts, reusing/extending the existing
   `scripts/run.sh` and `scripts/reset_db.sh` rather than duplicating them.
 
+### Phase 12 — Recurring (cyclic) tasks
+Today every task is a one-off: a chore that comes back every week has to be re-created by hand
+each time. This phase lets a task declare a recurrence rule so it regenerates itself instead:
+- Server: a recurrence rule on the task (e.g. `recurrence_interval` + `recurrence_unit` -
+  daily/weekly/monthly - plus an optional end date), stored either as new columns on `tasks` or a
+  small `task_recurrences` table keyed by a template task. When a recurring task is completed
+  (`TaskManager.mark_done`/`log_hours`), instead of just marking it done, the next occurrence is
+  created automatically with the deadline advanced by the rule's interval and the same effort/
+  importance/type/subtype - so the board always has exactly one open instance of a recurring task,
+  never zero and never a pile-up of duplicates.
+- Completion history for a recurring task's past occurrences is preserved (each instance still has
+  its own `task_id`/`completed_at`), so `PrioritizerTrainer`'s completion snapshots (Phase 7) keep
+  working unchanged - a recurring task is just a task that happens to spawn its successor.
+- Client: a "Repeats" control on the task form (none / daily / weekly / monthly, optional end
+  date), and a small recurring-task indicator in the task list so it's visually distinct from a
+  one-off task.
+
 ## The TODO List
 This section presents all the tasks that need to be done to complete the project, grouped by the
 roadmap phase that owns them (see above for full descriptions).
@@ -417,7 +440,10 @@ roadmap phase that owns them (see above for full descriptions).
 ### Phase 8 — Task organization & editing
 - [ ] Edit-in-place for a task in the client (`PUT /api/tasks/<id>` already exists server-side)
 - [ ] Sort tasks by score, deadline, or type/subtype in the client
-- [ ] Filter/search tasks (hide done, filter by type/subtype, search by name)
+- [ ] Replace the free-text type/subtype inputs with dropdowns populated from the user's
+  existing categories
+- [ ] Filter the task list by type and/or subtype (via the dropdowns above)
+- [ ] Filter/search tasks (hide done, search by name)
 - [ ] Visual styling for overdue tasks in the task list
 ### Phase 9 — Time visualization
 - [ ] `GET /api/plan/week` multi-day plan endpoint (server)
@@ -436,6 +462,10 @@ roadmap phase that owns them (see above for full descriptions).
 - [ ] Create the installation script
 - [ ] Create the uninstallation script
 - [ ] Create the update script
+### Phase 12 — Recurring (cyclic) tasks
+- [ ] Recurrence rule on a task (interval/unit, optional end date) - server schema + storage
+- [ ] Completing a recurring task spawns its next occurrence instead of just marking it done
+- [ ] "Repeats" control on the client task form, plus a recurring-task indicator in the task list
 ### Done (Phases 1-6)
 - [x] Create the server storage system through a sqlite3 database
 - [x] Create the server prioritizer based on the closed-form spec (`FormulaPrioritizer`)
