@@ -2,7 +2,7 @@
 Priotask helps manage and prioritize tasks for effective time management, allowing users to quickly focus on important tasks and meet deadlines. It streamlines manual workload management.
 
 ## Getting Started
-Everything needed to run Phases 1-5 locally and try the app end to end.
+Everything needed to run Phases 1-6 locally and try the app end to end.
 
 ### 1. Set up the environment
 ```
@@ -13,6 +13,9 @@ If the environment already exists and `environment.yml` changed since you create
 ```
 conda env update -f environment.yml --prune
 ```
+Phase 6 pins `python<3.13` (TensorFlow/Keras don't ship wheels past 3.12 yet). `conda env
+update` won't downgrade an already-created env's Python version — if yours predates this pin,
+recreate it instead: `conda env remove -n priotask && conda env create -f environment.yml`.
 
 ### 2. Run the server (API)
 From the repo root:
@@ -52,7 +55,7 @@ python -m unittest discover -s client/test -p "*_test.py"
 ## The Behaviour
 Priotask is supposed to let a user register the tasks they need to do and help them schedule them. The user can also prioritize tasks, and the application will help them focus on the most important tasks. The user can also mark tasks as done, and the application will adapt to the user's preferences. 
 ## The Code Behind
-The project is a client-server application. The server is suppose to store user and task data, while the client is the user interface for the aplication. All the code is written in Python. The server includes a database, which is a SQLite database. The server also includes a 'Prioritizer'. There are two prioritization models behind a common interface (`PrioritizerModel`): `FormulaPrioritizer`, a closed-form scoring model derived directly from the project's technical spec (urgency from effort/deadline, scaled by importance), and `PrioritizerNetwork`, a small neural network meant to eventually replace it. That network is trained to prioritize tasks based on the user's input: each time a user selects to do a task, that one is flagged to be the priority and the prioritizer is adapted to consider those parameters as important. The idea is that each user will have their own prioritizer, which will be trained to prioritize tasks based on their own preferences. (This means that the neural network's weights will be stored in the database, and will be updated each time the user selects a task to do.)
+The project is a client-server application. The server is suppose to store user and task data, while the client is the user interface for the aplication. All the code is written in Python. The server includes a database, which is a SQLite database. The server also includes a 'Prioritizer'. There are two prioritization models behind a common interface (`PrioritizerModel`): `FormulaPrioritizer`, a closed-form scoring model derived directly from the project's technical spec (urgency from effort/deadline, scaled by importance), and `PrioritizerNetwork`, a small per-user neural network (Phase 6) that learns a correction on top of `FormulaPrioritizer`'s score instead of replacing it outright. Each time a user marks a task done, that's training signal — the prioritizer learns to weigh that kind of task higher. Each user gets their own model, persisted through `ModelStore` (a thin, model-agnostic key-value store keyed by `user_id` + `model_type`), so a future model (an XGBoost booster, say) can be added alongside the neural network without changing how weights are stored.
 ## Repo Structure
 ```
 Priotask/
@@ -81,11 +84,13 @@ Priotask/
     │   ├── api/              # Phase 4 REST API (Flask)
     │   │   ├── app.py        # create_app(): wires DB/managers/services, registers blueprints, CORS
     │   │   ├── auth.py       # require_auth decorator (Bearer token -> g.user_id)
-    │   │   ├── user_routes.py    # POST /users, /auth/login, /auth/logout
-    │   │   ├── task_routes.py    # CRUD for /tasks (+ /tasks/<id>/complete)
-    │   │   └── plan_routes.py    # GET /plan/today (DailyPlanner, Phase 3)
+    │   │   ├── user_routes.py        # POST /users, /auth/login, /auth/logout
+    │   │   ├── task_routes.py        # CRUD for /tasks (+ /tasks/<id>/complete)
+    │   │   ├── plan_routes.py        # GET /plan/today (DailyPlanner, Phase 3)
+    │   │   └── prioritizer_routes.py # POST /prioritizer/train (PrioritizerTrainer, Phase 6)
     │   ├── data/
-    │   │   ├── db/           # DB access: DB.py (sqlite3, schema for users/tasks), TaskDAO/UserDAO
+    │   │   ├── db/           # DB access: DB.py (sqlite3, schema for users/tasks/model_weights),
+    │   │   │                 # TaskDAO/UserDAO/ModelWeightsDAO
     │   │   ├── domain/       # Domain models: Task, User (now carry persistence fields)
     │   │   └── dto/          # Wire-format dataclasses: TaskDTO, UserDTO
     │   ├── remote/           # Client-server link: RemoteFacade, TokenManager (stubs)
@@ -96,15 +101,19 @@ Priotask/
     │       └── Prioritizer/         # See "The Prioritization Model" below
     │           ├── PrioritizerModel.py      # Common interface: score(task, reference_date)
     │           ├── FormulaPrioritizer.py    # Closed-form model from tareas_spec.pdf (done)
-    │           ├── PrioritizerNetwork.py    # Per-user neural network (stub, future)
+    │           ├── FeatureExtractor.py      # Task -> fixed-order feature vector (Phase 6)
+    │           ├── ModelStore.py            # Per-user weight persistence, model-agnostic (Phase 6)
+    │           ├── PrioritizerNetwork.py    # Per-user Keras NN: correction on v_i (Phase 6)
+    │           ├── PrioritizerTrainer.py    # Builds training set from task history, fits/saves (Phase 6)
     │           ├── PrioritizerService.py    # Ranking (rank) + diagnostics, model-agnostic
     │           └── DailyPlanner.py          # v_i -> recommended_hours_today (Phase 3, done)
     └── test/
-        ├── Prioritizer_test.py      # Unit tests for FormulaPrioritizer/PrioritizerService
-        ├── DailyPlanner_test.py     # Unit tests for DailyPlanner (water-filling budget)
-        ├── TaskManager_test.py      # Unit tests for TaskManager (in-memory sqlite)
-        ├── UserManager_test.py      # Unit tests for UserManager (in-memory sqlite)
-        ├── Api_test.py              # Unit tests for the Flask API (in-memory sqlite)
+        ├── Prioritizer_test.py        # Unit tests for FormulaPrioritizer/PrioritizerService
+        ├── PrioritizerNetwork_test.py # Unit tests for FeatureExtractor/ModelStore/PrioritizerNetwork/Trainer
+        ├── DailyPlanner_test.py       # Unit tests for DailyPlanner (water-filling budget)
+        ├── TaskManager_test.py        # Unit tests for TaskManager (in-memory sqlite)
+        ├── UserManager_test.py        # Unit tests for UserManager (in-memory sqlite)
+        ├── Api_test.py                # Unit tests for the Flask API (in-memory sqlite)
         └── Server_test.py
 ```
 
@@ -238,6 +247,9 @@ layers from Phases 1-3 over HTTP, run via `python -m server.src.Server`:
   (`Authorization: Bearer <token>`); tasks belonging to another user 404.
 - `GET /api/plan/today?hours=<n>` — today's plan: ranked tasks + `recommended_hours_today`
   from `DailyPlanner` (Phase 3), `hours` overrides the default daily budget.
+- `POST /api/prioritizer/train` — (Phase 6) fits the authenticated user's `PrioritizerNetwork`
+  on their task history and persists it; `{"trained": false}` if there isn't enough signal yet
+  (see Phase 6 below).
 - `_enable_cors` (`app.py`) adds permissive CORS headers and handles `OPTIONS` preflight
   requests, needed once Phase 5's client started calling this API from a different origin/port.
 
@@ -262,10 +274,42 @@ The server-side `RemoteFacade`/`TokenManager` stubs (`server/src/remote/`) are l
 possible future native client (e.g. the Android client mentioned under "The Future") — the web
 client below talks to the API directly over HTTP and doesn't need them.
 
-### Phase 6 — Personalization (`PrioritizerNetwork`)
-- Train the per-user network from completion signal captured in Phase 2.
-- Decide the blending strategy with `FormulaPrioritizer` (e.g. the network learns a correction
-  on top of `v_i` rather than replacing it outright until there's enough data per user).
+### Phase 6 — Personalization (`PrioritizerNetwork`) (in progress)
+A per-user model that learns a *correction* on top of `FormulaPrioritizer`'s score `v_i` rather
+than replacing it, built so the storage/training plumbing isn't tied to any one ML library:
+
+- **`FeatureExtractor`** (`server/src/services/Prioritizer/FeatureExtractor.py`) turns a `Task`
+  into a fixed-order numeric vector — `effort_days`, `days_remaining`, `importance`, `urgency`,
+  `formula_score` — reusing `FormulaPrioritizer`'s own building blocks so the formula and the
+  learned correction never drift apart. Any model that learns (the network today, others later)
+  trains and predicts on this same vector.
+- **`ModelStore`** (`server/src/services/Prioritizer/ModelStore.py`) persists opaque per-user
+  weights keyed by `user_id` + an arbitrary `model_type` string, backed by a new `model_weights`
+  table (`server/src/data/db/DB.py`, `ModelWeightsDAO`). It never looks inside the bytes — each
+  model owns its own serialization — so a future model (an XGBoost booster, say) can reuse the
+  same store under its own `model_type` without touching this class.
+- **`PrioritizerNetwork`** (`server/src/services/Prioritizer/PrioritizerNetwork.py`) is a small
+  Keras model — 3 layers total: the 5-feature input, one hidden `Dense(8, relu)`, and a
+  `Dense(1, sigmoid)` output — registered under `model_type = "keras_nn_v1"`. Its output is read
+  as a `[0, 1]` correction and blended as `v_i * (2 * correction)`: an untrained (or never-stored)
+  network defaults to `correction ≈ 0.5`, i.e. multiplier `≈ 1`, so plugging it in is a no-op
+  until a user actually has a trained model. With no stored weights for a user (or no `user_id`
+  at all, e.g. an unpersisted `Task`), `score()` falls straight back to `FormulaPrioritizer`.
+- **`PrioritizerTrainer`** (`server/src/services/Prioritizer/PrioritizerTrainer.py`) builds the
+  training set from a user's task history: done tasks are positive examples (scored as of their
+  `completed_at`), still-open tasks are negative examples (scored as of now). This is a coarse
+  proxy for "the task the user picked" — Phase 2's schema doesn't snapshot which tasks were on
+  the table at each completion — good enough to start training on, revisit if it's not enough.
+  Training only runs once there's a minimum number of examples with both labels present
+  (`PrioritizerTrainer.MIN_EXAMPLES`); otherwise `train()` is a no-op.
+- **`POST /api/prioritizer/train`** (`prioritizer_routes.py`) triggers training for the
+  authenticated user; `create_app` wires the same `PrioritizerNetwork`/`ModelStore` into
+  `DailyPlanner` via `PrioritizerService`, so a freshly trained model is picked up by
+  `/api/plan/today` immediately, with no redeploy.
+
+Not yet done: there's no client UI to trigger training or show whether a user's network is
+active, and the negative-example heuristic above is a first cut, not validated against real
+usage yet.
 
 ### Phase 7 — Hardening
 - Tests for the DB/API/client layers, docs, install/update scripts (see TODO list below).
@@ -275,13 +319,19 @@ This section presents all the tasks that need to be done to complete the project
 ### Server
 - [x] Create the server storage system through a sqlite3 database
 - [x] Create the server prioritizer based on the closed-form spec (`FormulaPrioritizer`)
-- [ ] Create the server prioritizer as a neural network (`PrioritizerNetwork`, stubbed)
+- [x] Create the server prioritizer as a neural network (`PrioritizerNetwork`, Phase 6: 3-layer
+  Keras model, blended as a correction on top of `FormulaPrioritizer`)
 - [x] Create the server user management system
 - [x] Create the server task management system
 - [x] Turn the priority score into a daily time budget (`DailyPlanner`, Phase 3)
 - [x] Create the server API (Flask, `server/src/api/`, Phase 4)
+- [x] Persist per-user model weights in a model-agnostic way (`ModelStore`/`model_weights` table,
+  Phase 6) so a future model (e.g. XGBoost) can be added without changing the storage layer
 - [ ] Let a task be marked as partially done by logging `n` hours worked, subtracting that from
   `expected_duration_h` instead of only supporting an all-or-nothing `complete`
+- [ ] Capture a real per-completion snapshot of "tasks on the table" instead of
+  `PrioritizerTrainer`'s current proxy (done tasks vs. currently-open tasks)
+- [ ] Client UI to trigger `/api/prioritizer/train` and show whether a user has a trained network
 ### Client
 - [x] Create the client user interface (`client/src/webapp/`, Phase 5)
 - [x] Create the client task management system (`api.js` + `app.js`: create/list/complete/delete)
