@@ -5,6 +5,67 @@ Priotask helps manage and prioritize tasks for effective time management, allowi
 Priotask is supposed to let a user register the tasks they need to do and help them schedule them. The user can also prioritize tasks, and the application will help them focus on the most important tasks. The user can also mark tasks as done, and the application will adapt to the user's preferences. 
 ## The Code Behind
 The project is a client-server application. The server is suppose to store user and task data, while the client is the user interface for the aplication. All the code is written in Python. The server includes a database, which is a SQLite database. The server also includes a 'Prioritizer'. There are two prioritization models behind a common interface (`PrioritizerModel`): `FormulaPrioritizer`, a closed-form scoring model derived directly from the project's technical spec (urgency from effort/deadline, scaled by importance), and `PrioritizerNetwork`, a small neural network meant to eventually replace it. That network is trained to prioritize tasks based on the user's input: each time a user selects to do a task, that one is flagged to be the priority and the prioritizer is adapted to consider those parameters as important. The idea is that each user will have their own prioritizer, which will be trained to prioritize tasks based on their own preferences. (This means that the neural network's weights will be stored in the database, and will be updated each time the user selects a task to do.)
+## The Prioritization Model
+This is the math behind `FormulaPrioritizer` (`server/src/services/Prioritizer/FormulaPrioritizer.py`),
+taken directly from the project's technical spec ([tareas_spec.pdf](tareas_spec.pdf)). Given the
+active tasks `T = {1, ..., N}` and a reference date `t` (today, recalculated daily), each task `i`
+has three inputs:
+
+| Symbol | Meaning | Field on `Task` |
+|---|---|---|
+| `f_i` | deadline | `deadline` |
+| `n_i` | estimated effort, in hours | `expected_duration_h` |
+| `alpha_i` | importance, manually set in `[1, 10]` | `importance` |
+
+**1. Effort, converted to days** (`FormulaPrioritizer.effort_days`) — hours are turned into the
+same unit as the date arithmetic below:
+```
+h_i = n_i / 24
+```
+
+**2. Days remaining until the deadline** (`FormulaPrioritizer.days_remaining`) — the `-0.49`
+offset makes a task count as overdue (`d_i < 0`) from the start of its due day, not just after
+midnight:
+```
+d_i = f_i - t - 0.49
+```
+
+**3. Urgency** (`FormulaPrioritizer.urgency`) — split into two regimes depending on the sign of `d_i`:
+```
+        h_i / d_i           if d_i > 0   (current: minimum daily effort to still make it)
+r_i =
+        (2 + |d_i|) * h_i   if d_i <= 0  (overdue: grows linearly with the delay)
+```
+The jump between regimes is intentional: `r_i -> +inf` as `d_i -> 0+`, while `r_i = 2*h_i`
+exactly at `d_i = 0`. Crossing the deadline resets urgency to a finite base value
+(`2 * h_i`) instead of leaving it at infinity, and the overdue regime then grows from there
+so a late task never gets buried again as time passes.
+
+**4. Priority score** (`FormulaPrioritizer.score`) — importance scales urgency linearly:
+```
+v_i = alpha_i * r_i
+```
+
+**5. Ordering** (`PrioritizerService.rank`) — tasks are sorted by score, descending, with ties
+broken lexicographically by type, sub-type and name (ascending):
+```
+pi = argsort(v, desc; task_type, task_subtype, name, asc)
+```
+
+**6. Diagnostics panel** (`PrioritizerService.diagnostics`) — summary stats over `{v_i}` meant to
+help gauge how loaded a session is, plus two reference thresholds (a quarter and an eighth of the
+total score) for deciding how many tasks to take on:
+```
+v_mean = mean(v_i)
+v_std  = stdev(v_i)          # population standard deviation
+V      = sum(v_i)
+threshold_quarter = V / 4
+threshold_eighth  = V / 8
+```
+
+`v_i` itself is not meant to be shown to the user as-is — it's the internal ranking signal that
+Phase 3 of the roadmap below still needs to turn into a "hours to spend on this today" number.
+
 ## The Future
 The first version of Priotask will be fully Python based, but this does not necessarilly be the case later on. The idea is to support mobile devices with a client application (at least on Android). 
 ## The Team
