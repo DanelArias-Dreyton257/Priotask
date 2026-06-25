@@ -32,9 +32,11 @@ Priotask/
     │           ├── PrioritizerModel.py      # Common interface: score(task, reference_date)
     │           ├── FormulaPrioritizer.py    # Closed-form model from tareas_spec.pdf (done)
     │           ├── PrioritizerNetwork.py    # Per-user neural network (stub, future)
-    │           └── PrioritizerService.py    # Ranking (rank) + diagnostics, model-agnostic
+    │           ├── PrioritizerService.py    # Ranking (rank) + diagnostics, model-agnostic
+    │           └── DailyPlanner.py          # v_i -> recommended_hours_today (Phase 3, done)
     └── test/
         ├── Prioritizer_test.py      # Unit tests for FormulaPrioritizer/PrioritizerService
+        ├── DailyPlanner_test.py     # Unit tests for DailyPlanner (water-filling budget)
         ├── TaskManager_test.py      # Unit tests for TaskManager (in-memory sqlite)
         ├── UserManager_test.py      # Unit tests for UserManager (in-memory sqlite)
         └── Server_test.py
@@ -99,7 +101,8 @@ threshold_eighth  = V / 8
 ```
 
 `v_i` itself is not meant to be shown to the user as-is — it's the internal ranking signal that
-Phase 3 of the roadmap below still needs to turn into a "hours to spend on this today" number.
+Phase 3 of the roadmap below turns into a "hours to spend on this today" number
+(`DailyPlanner.plan`, see below).
 
 ## The Future
 The first version of Priotask will be fully Python based, but this does not necessarilly be the case later on. The idea is to support mobile devices with a client application (at least on Android). 
@@ -138,20 +141,25 @@ internal ranking signal that still needs to be normalized into a time budget.
   plaintext).
 - Marking a task "done" persists the completion (needed later as training signal for Phase 6).
 
-### Phase 3 — Daily time budget (turns `v_i` into an actual recommendation)
-This is where "the score" becomes the feature the user actually sees. Rough approach
-(normalization details still open, as noted above):
-- Only tasks with remaining effort `h_i > 0` and not done are eligible for today.
-- The user has a configurable daily capacity `available_hours_today` (sensible default, e.g. 6h).
-- Each eligible task gets a share of that capacity proportional to its score:
+### Phase 3 — Daily time budget (done)
+This is where "the score" becomes the feature the user actually sees, implemented in
+`server/src/services/Prioritizer/DailyPlanner.py` (`DailyPlanner.plan`):
+- Only tasks with remaining effort `expected_duration_h > 0` and not done are eligible for today.
+- The caller passes a daily capacity `available_hours_today` (default `6.0h`,
+  `DEFAULT_AVAILABLE_HOURS_TODAY`).
+- Eligible tasks are ranked via `PrioritizerService.rank` (score `v_i`, eq. 5 tie-breaks), then
+  each gets a share of the capacity proportional to its score:
   `share_i = v_i / sum(v_j for j in today's candidates)`,
   `recommended_hours_i = min(remaining_effort_i, available_hours_today * share_i)`.
 - Tasks capped by `remaining_effort_i` free up unused budget, which gets redistributed among
-  the remaining tasks (water-filling) until the budget is exhausted or every task is fully covered.
-- Overdue tasks (`d_i <= 0`) are never starved by this redistribution — they're guaranteed a
-  minimum slot before the remaining budget is shared out.
-- Output per task: rank, `v_i`, `recommended_hours_today`. Diagnostics already built in Phase 1
-  (`mean`, `std`, `V/4`, `V/8`) are meant to help calibrate `available_hours_today` itself.
+  the remaining tasks (water-filling, `DailyPlanner._water_fill`) until the budget is exhausted
+  or every task is fully covered.
+- Overdue tasks (deadline at/before the reference date) are never starved by this
+  redistribution: they are water-filled first against the *full* budget; only what's left over
+  afterwards is water-filled among the current (not-yet-due) tasks.
+- Output per task (`PlanEntry`): `rank`, `task`, `score` (`v_i`), `recommended_hours_today`.
+  Diagnostics already built in Phase 1 (`mean`, `std`, `V/4`, `V/8`) are meant to help calibrate
+  `available_hours_today` itself.
 
 ### Phase 4 — Server API
 - Endpoints to list/create/update/complete tasks and to fetch "today's plan" (ranked tasks +
@@ -177,13 +185,15 @@ This section presents all the tasks that need to be done to complete the project
 - [ ] Create the server prioritizer as a neural network (`PrioritizerNetwork`, stubbed)
 - [x] Create the server user management system
 - [x] Create the server task management system
+- [x] Turn the priority score into a daily time budget (`DailyPlanner`, Phase 3)
 - [ ] Create the server API
 ### Client
 - [ ] Create the client user interface
 - [ ] Create the client task management system
 - [ ] Create the client connection to the server
 ### Tests
-- [x] Create the tests for the server (Prioritizer, TaskManager, UserManager — `server/test/`)
+- [x] Create the tests for the server (Prioritizer, DailyPlanner, TaskManager, UserManager —
+  `server/test/`)
 - [ ] Create the tests for the client
 ### Documentation
 - [ ] Create the documentation for the server
