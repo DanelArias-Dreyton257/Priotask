@@ -61,7 +61,10 @@ Open `http://localhost:5500` in a browser:
    ("Due: ..."). "Hours available per day" + **Refresh week** re-fetches it with a different daily
    budget.
 7. **Train priority model** fits the user's `PrioritizerNetwork` (Phase 6) on their task history so
-   far — it reports whether there was enough completion history to actually train on.
+   far — it reports whether there was enough completion history to actually train on. The status
+   line next to it (Phase 10) shows whether a trained model is currently active and when it was
+   last trained, without itself triggering training; **Reset model** (shown once a model is
+   active) discards it and reverts to formula-only scoring.
 
 ### 5. Run the tests
 ```
@@ -349,20 +352,20 @@ than replacing it, built so the storage/training plumbing isn't tied to any one 
 
 **Known gaps**, split by where they get addressed:
 
-User-visible, tracked under Phase 10 (Personalization visibility):
+User-visible, closed by Phase 10 (Personalization visibility) below:
 - No client UI to trigger training or show whether a user's network is active — the only signal
-  today is the one-shot `{"trained": bool}` response from `POST /api/prioritizer/train`.
-- No way to read a user's model status without retraining. `ModelWeightsDAO.upsert` already
-  stores an `updated_at` timestamp per save (`server/src/data/db/ModelWeightsDAO.py`), but nothing
-  reads it back — there's no `GET /api/prioritizer/status` to answer "is there a trained model,
-  and when was it last updated" as a side-effect-free check.
-- No way to discard a trained model and fall back to formula-only scoring. `ModelStore.delete`
-  exists and is unit-tested, but no route calls it, so a user stuck with a model trained on bad
-  signal (e.g. a few mis-clicked completions) has no way to reset it short of editing the database.
+  was the one-shot `{"trained": bool}` response from `POST /api/prioritizer/train`. Closed by the
+  status indicator + `GET /api/prioritizer/status`.
+- No way to read a user's model status without retraining, even though `ModelWeightsDAO.upsert`
+  already stored an `updated_at` timestamp per save (`server/src/data/db/ModelWeightsDAO.py`).
+  Closed by `GET /api/prioritizer/status`, a side-effect-free read of that same row.
+- No way to discard a trained model and fall back to formula-only scoring — `ModelStore.delete`
+  existed and was unit-tested, but no route called it. Closed by `DELETE /api/prioritizer/model`
+  (`PrioritizerNetwork.forget`, which also evicts the in-memory `_cache` entry so the very next
+  score for that user re-checks the store instead of serving the just-deleted model).
 - The negative-example heuristic (Phase 7's completion snapshots, plus all currently-open tasks)
-  is a reasonable first cut but unvalidated against real usage — showing the formula score and the
-  learned-correction score side by side (already on the Phase 10 list below) is what would surface
-  whether it's actually working.
+  is a reasonable first cut but still unvalidated against real usage — showing the formula score
+  and the learned-correction score side by side remains optional future work, not done here.
 
 Internal/robustness, tracked under Phase 11 (Hardening & polish):
 - `FeatureExtractor`'s five features (`effort_days`, `days_remaining`, `importance`, `urgency`,
@@ -469,22 +472,28 @@ Verified end to end with a Playwright-driven browser run (login, create a multi-
 to the week tab, confirm hours carry forward across days and the deadline marker appears on the
 due day) on top of new server-side unit/API test coverage (`DailyPlanner_test.py`, `Api_test.py`).
 
-### Phase 10 — Personalization visibility
-Surfaces the Phase 6 `PrioritizerNetwork` model, which already trains and scores server-side but
-is invisible to the user — closes the user-visible gaps listed under Phase 6 above:
-- New server capability: `GET /api/prioritizer/status` — whether the authenticated user has a
-  trained model and, if so, its `updated_at` (already stored by `ModelWeightsDAO.upsert`, just
-  never read back), as a side-effect-free check that doesn't itself trigger training.
-- New server capability: `DELETE /api/prioritizer/model` (or similar) to discard a user's trained
-  model and revert to formula-only scoring, wiring up the already-implemented but unused
-  `ModelStore.delete`.
-- Client: a status indicator ("learning" / "active" / "not enough data yet"), driven by the new
-  status endpoint (falling back to `POST /api/prioritizer/train`'s `{"trained": bool}` response
-  right after a manual train action), plus a "reset" control calling the new delete endpoint.
-- A manual "retrain" action and/or an automatic trigger after N completions.
-- Optionally, show the formula score and the learned-correction score side by side, so a user can
-  see why ranking changed after training instead of just observing a re-sort — also the most
-  direct way to sanity-check Phase 6's negative-example heuristic against real usage.
+### Phase 10 — Personalization visibility (done)
+Surfaces the Phase 6 `PrioritizerNetwork` model, which already trained and scored server-side but
+was invisible to the user — closes the user-visible gaps listed under Phase 6 above:
+- `GET /api/prioritizer/status` (`prioritizer_routes.py`) — whether the authenticated user has a
+  trained model and, if so, its `updated_at`, read straight from `ModelWeightsDAO.get` (the
+  timestamp `ModelWeightsDAO.upsert` already stored, just never read back) without itself
+  triggering training.
+- `DELETE /api/prioritizer/model` (`prioritizer_routes.py`) discards a user's trained model and
+  reverts them to formula-only scoring, via the new `PrioritizerNetwork.forget` (wraps the
+  already-implemented `ModelStore.delete` and also evicts the matching `_cache` entry, so the
+  model is gone from the very next score call, not just the next process restart).
+- Client: a status indicator next to "Train priority model" ("active (trained <when>)" / "not
+  enough data yet"), driven by `GET /api/prioritizer/status` (`api.js:getPrioritizerStatus`,
+  `views.js:renderPrioritizerStatus`) — refreshed on login and after every train/reset action, not
+  just shown as a one-shot toast — plus a "Reset model" button (only shown once a model is
+  active) calling the new delete endpoint (`api.js:resetPrioritizerModel`).
+- Manual retrain is the existing "Train priority model" button; an automatic trigger after N
+  completions is left as future work (Phase 6's negative-example heuristic is still unvalidated
+  against real usage, so auto-retraining on a heuristic that isn't trusted yet would just compound
+  the uncertainty).
+- Not done: showing the formula score and the learned-correction score side by side was listed as
+  optional and is left for a future phase.
 
 ### Phase 11 — Hardening & polish
 - JS unit tests for `views.js`/`app.js`/`api.js` — today only `client/test/Client_test.py` exists
@@ -569,15 +578,16 @@ roadmap phase that owns them (see above for full descriptions).
 - [x] Week-view grid in the client (7-day plan + hours per day)
 - [x] Per-day load indicator using `PrioritizerService.diagnostics()` thresholds
 - [x] Deadline markers on the week view
-### Phase 10 — Personalization visibility
-- [ ] `GET /api/prioritizer/status` (trained?/`updated_at`) — server, reads `ModelWeightsDAO`
+### Phase 10 — Personalization visibility (done)
+- [x] `GET /api/prioritizer/status` (trained?/`updated_at`) — server, reads `ModelWeightsDAO`
   without retraining
-- [ ] `DELETE /api/prioritizer/model` (or similar) to reset a user's model to formula-only scoring
+- [x] `DELETE /api/prioritizer/model` (or similar) to reset a user's model to formula-only scoring
   — server, wires up the already-implemented `ModelStore.delete`
-- [ ] Client UI showing whether a user has a trained `PrioritizerNetwork` ("learning" / "active" /
+- [x] Client UI showing whether a user has a trained `PrioritizerNetwork` ("active" /
   "not enough data yet"), driven by the status endpoint above
-- [ ] Client "reset model" control calling the delete endpoint above
-- [ ] Manual or auto-triggered retrain action in the client
+- [x] Client "reset model" control calling the delete endpoint above
+- [x] Manual retrain action in the client (existing "Train priority model" button); auto-triggered
+  retrain after N completions left as future work, see Phase 10 notes above
 - [ ] Optional: show formula score vs. learned-correction score side by side
 ### Phase 11 — Hardening & polish
 - [ ] JS unit tests for `views.js`/`app.js`/`api.js`
