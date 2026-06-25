@@ -23,7 +23,7 @@ From the repo root:
 python -m server.src.Server
 ```
 Starts the Flask API on `http://localhost:5000`, backed by a `priotask.db` SQLite file created
-in the repo root on first run (delete that file to start fresh).
+in the repo root on first run.
 
 ### 3. Run the client (web UI)
 In a second terminal, from the repo root:
@@ -35,6 +35,9 @@ default; override with `PRIOTASK_API_BASE_URL` if the server runs elsewhere, e.g
 ```
 PRIOTASK_API_BASE_URL=http://localhost:5000 python -m client.src.Client
 ```
+
+Steps 2 and 3 can be replaced with one command/terminal, `./scripts/run.sh` (see
+[Scripts](#scripts) below).
 
 ### 4. Try it
 Open `http://localhost:5500` in a browser:
@@ -51,6 +54,15 @@ Open `http://localhost:5500` in a browser:
 python -m unittest discover -s server/test -p "*_test.py"
 python -m unittest discover -s client/test -p "*_test.py"
 ```
+
+## Scripts
+Bash scripts in `scripts/` (run from the repo root, or anywhere — they `cd` to the repo root
+themselves):
+- `./scripts/run.sh` — starts the server and the client together in one terminal; `Ctrl+C` stops
+  both.
+- `./scripts/reset_db.sh [path]` — deletes the SQLite file (`priotask.db` by default), wiping
+  every user, task and trained `PrioritizerNetwork` weight; the server recreates an empty one with
+  the current schema next time it starts. Prompts for confirmation unless run with `FORCE=1`.
 
 ## The Behaviour
 Priotask is supposed to let a user register the tasks they need to do and help them schedule them. The user can also prioritize tasks, and the application will help them focus on the most important tasks. The user can also mark tasks as done, and the application will adapt to the user's preferences. 
@@ -348,7 +360,9 @@ This section presents all the tasks that need to be done to complete the project
 - [ ] Create the installation script
 - [ ] Create the uninstallation script
 - [ ] Create the update script
-- [ ] Create a script that launches the server and the client together (one command instead of
-  two separate `python -m server.src.Server` / `python -m client.src.Client` terminals)
+- [x] Create a script that launches the server and the client together (`scripts/run.sh`, one
+  command instead of two separate `python -m server.src.Server` /
+  `python -m client.src.Client` terminals)
+- [x] Create a script that flushes the database (`scripts/reset_db.sh`)
 
  
