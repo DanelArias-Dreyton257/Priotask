@@ -385,8 +385,9 @@ a forward-looking view of their week.
   carrying each task's still-remaining effort forward into the next day — i.e. extend the existing
   water-filling logic across N days instead of rewriting it.
 - Client: a week-view grid (7 columns, one per day) showing each day's planned tasks and hours,
-  alongside (not replacing) the existing single-day "Today's plan" list — e.g. a tab/toggle inside
-  `plan-section` between "Today" and "This week".
+  alongside (not replacing) the existing single-day "Today's plan" list — a tab/toggle between
+  "Today" and "This week" inside whatever hosts the plan view (`plan-section` today, the
+  Timetable window once Phase 13's navigation shell exists).
 - A per-day load indicator (planned hours vs. capacity) so overloaded days are visible at a
   glance, built on `PrioritizerService.diagnostics()`'s `V/4`/`V/8` thresholds (already computed
   server-side, never surfaced via the API or client today).
@@ -427,6 +428,28 @@ each time. This phase lets a task declare a recurrence rule so it regenerates it
   date), and a small recurring-task indicator in the task list so it's visually distinct from a
   one-off task.
 
+### Phase 13 — Top-level navigation & account settings
+Phases 8-10 and 12 each add their own chunk of UI (editing/filtering, a week view, training
+status, recurring-task controls) on top of the current single screen
+(`app-section`'s `.board` of `tasks-section` + `plan-section`) - that stops scaling once all of
+them exist at once. This phase turns the client into a small set of focused windows behind a
+top-level nav, instead of one ever-growing page:
+- A top nav bar (`index.html`/`app.js`) listing one entry per window, switched client-side with no
+  page reload - the same `.hidden`-toggling pattern `Views.showAuthenticated`/`showAnonymous`
+  already use for `auth-section`/`app-section`, just with more than two panes:
+  - **Tasks** - the task list, editing, sorting/filtering/categories (Phase 8).
+  - **Timetable** - today's plan and the week view (Phase 9); the today/week toggle from that
+    phase lives here instead of nested inside a single `plan-section`.
+  - **Prioritizer** - training status and retrain controls (Phase 10).
+  - **Account** - new (see below).
+- **Account window**: view username/email, change password, and update email (log out already
+  exists). This needs server support that doesn't exist yet - `UserDAO`/`UserManager` currently
+  only have `add_user`/`get_user_by_username`/`delete_user`, no update path - so this phase adds
+  `PUT /api/users/me` (email) and `POST /api/users/me/password` (current + new password, reusing
+  `UserManager._hash_password`), both behind `require_auth` and scoped to `g.user_id`.
+- Scope is the navigation shell and the Account window specifically; each other window's internal
+  layout is whatever its own phase above already specs.
+
 ## The TODO List
 This section presents all the tasks that need to be done to complete the project, grouped by the
 roadmap phase that owns them (see above for full descriptions).
@@ -466,6 +489,13 @@ roadmap phase that owns them (see above for full descriptions).
 - [ ] Recurrence rule on a task (interval/unit, optional end date) - server schema + storage
 - [ ] Completing a recurring task spawns its next occurrence instead of just marking it done
 - [ ] "Repeats" control on the client task form, plus a recurring-task indicator in the task list
+### Phase 13 — Top-level navigation & account settings
+- [ ] Top nav bar switching between Tasks/Timetable/Prioritizer/Account windows client-side
+- [ ] Move the task list + editing/filtering (Phase 8) behind the Tasks window
+- [ ] Move today's plan + week view (Phase 9) behind the Timetable window
+- [ ] Move training status/retrain controls (Phase 10) behind the Prioritizer window
+- [ ] `PUT /api/users/me` (update email) and `POST /api/users/me/password` (change password)
+- [ ] Account window: view username/email, change password, update email
 ### Done (Phases 1-6)
 - [x] Create the server storage system through a sqlite3 database
 - [x] Create the server prioritizer based on the closed-form spec (`FormulaPrioritizer`)
