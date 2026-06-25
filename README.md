@@ -280,6 +280,8 @@ This section presents all the tasks that need to be done to complete the project
 - [x] Create the server task management system
 - [x] Turn the priority score into a daily time budget (`DailyPlanner`, Phase 3)
 - [x] Create the server API (Flask, `server/src/api/`, Phase 4)
+- [ ] Let a task be marked as partially done by logging `n` hours worked, subtracting that from
+  `expected_duration_h` instead of only supporting an all-or-nothing `complete`
 ### Client
 - [x] Create the client user interface (`client/src/webapp/`, Phase 5)
 - [x] Create the client task management system (`api.js` + `app.js`: create/list/complete/delete)
@@ -296,5 +298,7 @@ This section presents all the tasks that need to be done to complete the project
 - [ ] Create the installation script
 - [ ] Create the uninstallation script
 - [ ] Create the update script
+- [ ] Create a script that launches the server and the client together (one command instead of
+  two separate `python -m server.src.Server` / `python -m client.src.Client` terminals)
 
  
