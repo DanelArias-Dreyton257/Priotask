@@ -21,13 +21,13 @@ Priotask/
     ├── src/
     │   ├── Server.py        # Entry point (stub, future API)
     │   ├── data/
-    │   │   ├── db/           # DB access: DB.py (sqlite3), TaskDAO/UserDAO, TempDB (mock store)
-    │   │   ├── domain/       # Domain models: Task, User
-    │   │   └── dto/          # Data-transfer objects: TaskDTO, UserDTO
+    │   │   ├── db/           # DB access: DB.py (sqlite3, schema for users/tasks), TaskDAO/UserDAO
+    │   │   ├── domain/       # Domain models: Task, User (now carry persistence fields)
+    │   │   └── dto/          # Wire-format dataclasses: TaskDTO, UserDTO
     │   ├── remote/           # Client-server link: RemoteFacade, TokenManager (stubs)
     │   └── services/
-    │       ├── TaskManager.py       # Task CRUD (stub)
-    │       ├── UserManager.py       # User CRUD (stub)
+    │       ├── TaskManager.py       # Task CRUD + domain<->DTO mapping (done)
+    │       ├── UserManager.py       # User CRUD + password hashing (done)
     │       └── Prioritizer/         # See "The Prioritization Model" below
     │           ├── PrioritizerModel.py      # Common interface: score(task, reference_date)
     │           ├── FormulaPrioritizer.py    # Closed-form model from tareas_spec.pdf (done)
@@ -35,6 +35,8 @@ Priotask/
     │           └── PrioritizerService.py    # Ranking (rank) + diagnostics, model-agnostic
     └── test/
         ├── Prioritizer_test.py      # Unit tests for FormulaPrioritizer/PrioritizerService
+        ├── TaskManager_test.py      # Unit tests for TaskManager (in-memory sqlite)
+        ├── UserManager_test.py      # Unit tests for UserManager (in-memory sqlite)
         └── Server_test.py
 ```
 
@@ -123,11 +125,17 @@ internal ranking signal that still needs to be normalized into a time budget.
   the `V/4`, `V/8` session-load thresholds).
 - `PrioritizerNetwork`: interface-compatible stub, not trained yet.
 
-### Phase 2 — Persistence
-- Replace the inconsistent `DB`/`TempDB`/DAO layer with one real sqlite3-backed
-  implementation, fixing the current broken imports (`server.data...` vs `server.src.data...`).
-- Flesh out `TaskManager`/`UserManager` as the CRUD layer between DAOs and domain objects
-  (including domain ↔ DTO mapping).
+### Phase 2 — Persistence (done)
+- Replaced the inconsistent `DB`/`TempDB`/DAO layer with one real sqlite3-backed
+  `DB` (schema for `users`/`tasks`, row access by column name via `sqlite3.Row`), fixing the
+  previously broken imports (`server.data...` vs `server.src.data...`).
+- `TaskDAO`/`UserDAO` now run real parameterized SQL against that schema, with the `DB` instance
+  injectable for tests (`DB(":memory:")`).
+- `TaskManager`/`UserManager` are the CRUD layer between DAOs and domain objects, including
+  domain ↔ DTO mapping (`TaskDTO`/`UserDTO`, wire-format dataclasses with ISO-8601 dates).
+- `Task`/`User` domain models gained persistence fields (`task_id`/`user_id`, `done`,
+  `completed_at`; `User` stores a salted `password_hash` via PBKDF2-HMAC-SHA256 instead of
+  plaintext).
 - Marking a task "done" persists the completion (needed later as training signal for Phase 6).
 
 ### Phase 3 — Daily time budget (turns `v_i` into an actual recommendation)
@@ -164,18 +172,18 @@ This is where "the score" becomes the feature the user actually sees. Rough appr
 ## The TODO List
 This section presents all the tasks that need to be done to complete the project.
 ### Server
-- [ ] Create the server storage system through a sqlite3 database
+- [x] Create the server storage system through a sqlite3 database
 - [x] Create the server prioritizer based on the closed-form spec (`FormulaPrioritizer`)
 - [ ] Create the server prioritizer as a neural network (`PrioritizerNetwork`, stubbed)
-- [ ] Create the server user management system
-- [ ] Create the server task management system
+- [x] Create the server user management system
+- [x] Create the server task management system
 - [ ] Create the server API
 ### Client
 - [ ] Create the client user interface
 - [ ] Create the client task management system
 - [ ] Create the client connection to the server
 ### Tests
-- [ ] Create the tests for the server
+- [x] Create the tests for the server (Prioritizer, TaskManager, UserManager — `server/test/`)
 - [ ] Create the tests for the client
 ### Documentation
 - [ ] Create the documentation for the server
