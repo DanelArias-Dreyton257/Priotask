@@ -1,6 +1,54 @@
 # Priotask
 Priotask helps manage and prioritize tasks for effective time management, allowing users to quickly focus on important tasks and meet deadlines. It streamlines manual workload management.
 
+## Getting Started
+Everything needed to run Phases 1-5 locally and try the app end to end.
+
+### 1. Set up the environment
+```
+conda env create -f environment.yml
+conda activate priotask
+```
+If the environment already exists and `environment.yml` changed since you created it:
+```
+conda env update -f environment.yml --prune
+```
+
+### 2. Run the server (API)
+From the repo root:
+```
+python -m server.src.Server
+```
+Starts the Flask API on `http://localhost:5000`, backed by a `priotask.db` SQLite file created
+in the repo root on first run (delete that file to start fresh).
+
+### 3. Run the client (web UI)
+In a second terminal, from the repo root:
+```
+python -m client.src.Client
+```
+Starts the web client on `http://localhost:5500`. It points at `http://localhost:5000` by
+default; override with `PRIOTASK_API_BASE_URL` if the server runs elsewhere, e.g.:
+```
+PRIOTASK_API_BASE_URL=http://localhost:5000 python -m client.src.Client
+```
+
+### 4. Try it
+Open `http://localhost:5500` in a browser:
+1. **Register** a user (or **Log in** if you already have one) — registering logs you in
+   automatically.
+2. Add a task with the **New task** form (name, deadline, effort in hours, importance 1-10).
+3. The task shows up under **Your tasks**, and **Today's plan** shows the recommended hours to
+   spend on it today (`DailyPlanner`, Phase 3) alongside its priority rank.
+4. **Done** marks a task complete, **Delete** removes it; both refresh **Today's plan**
+   automatically. The **Refresh plan** button re-fetches the plan with a different hours budget.
+
+### 5. Run the tests
+```
+python -m unittest discover -s server/test -p "*_test.py"
+python -m unittest discover -s client/test -p "*_test.py"
+```
+
 ## The Behaviour
 Priotask is supposed to let a user register the tasks they need to do and help them schedule them. The user can also prioritize tasks, and the application will help them focus on the most important tasks. The user can also mark tasks as done, and the application will adapt to the user's preferences. 
 ## The Code Behind
@@ -11,17 +59,27 @@ Priotask/
 ├── tareas_spec.pdf          # Technical spec: the formulas behind FormulaPrioritizer
 ├── environment.yml          # Conda environment (Python, lint/format/type-check tools)
 │
-├── client/                  # User-facing side (not started yet)
+├── client/                  # Phase 5: minimal web client
 │   ├── src/
-│   │   └── Client.py        # Entry point (stub)
+│   │   ├── Client.py         # Entry point: tiny Flask app serving the page (port 5500)
+│   │   └── webapp/
+│   │       ├── templates/
+│   │       │   └── index.html   # App shell: login/register, task list, today's plan
+│   │       └── static/
+│   │           ├── css/style.css
+│   │           └── js/
+│   │               ├── api.js       # ApiClient: fetch wrapper over the server REST API
+│   │               ├── session.js   # TokenStore: localStorage-backed bearer token
+│   │               ├── views.js     # DOM rendering, no app state or fetch calls
+│   │               └── app.js       # Controller: wires api.js + session.js + views.js
 │   └── test/
-│       └── Client_test.py
+│       └── Client_test.py    # Smoke test: index page + static JS are served
 │
 └── server/                  # Storage, business logic, prioritization
     ├── src/
     │   ├── Server.py        # Entry point: runs the Flask app (create_app)
     │   ├── api/              # Phase 4 REST API (Flask)
-    │   │   ├── app.py        # create_app(): wires DB/managers/services, registers blueprints
+    │   │   ├── app.py        # create_app(): wires DB/managers/services, registers blueprints, CORS
     │   │   ├── auth.py       # require_auth decorator (Bearer token -> g.user_id)
     │   │   ├── user_routes.py    # POST /users, /auth/login, /auth/logout
     │   │   ├── task_routes.py    # CRUD for /tasks (+ /tasks/<id>/complete)
@@ -180,11 +238,29 @@ layers from Phases 1-3 over HTTP, run via `python -m server.src.Server`:
   (`Authorization: Bearer <token>`); tasks belonging to another user 404.
 - `GET /api/plan/today?hours=<n>` — today's plan: ranked tasks + `recommended_hours_today`
   from `DailyPlanner` (Phase 3), `hours` overrides the default daily budget.
-- Wiring up the already-stubbed `RemoteFacade`/`TokenManager` on the client side against this
-  API is left to Phase 5.
+- `_enable_cors` (`app.py`) adds permissive CORS headers and handles `OPTIONS` preflight
+  requests, needed once Phase 5's client started calling this API from a different origin/port.
 
-### Phase 5 — Minimal client
-- Just enough UI (or CLI) to register tasks and show today's plan end to end.
+### Phase 5 — Minimal client (done)
+A browser-based client (`client/`) talking to the Phase 4 API end to end: register/log in,
+list tasks ordered by priority, add/complete/delete tasks, and see today's recommended hours
+per task. Plain HTML/CSS/JS (no framework, no build step), served by a second, much smaller
+Flask app (`client/src/Client.py`, `python -m client.src.Client`, port `5500` by default) that
+just renders the page shell and points it at the API (`PRIOTASK_API_BASE_URL` env var, default
+`http://localhost:5000`); all app logic runs client-side in the browser.
+
+The JS layering mirrors the server's DAO/DTO/Manager split:
+- `api.js` (`ApiClient`) — the only place that calls `fetch`; knows the routes and JSON shapes
+  (`TaskDTO`/`UserDTO`), analogous to the server-side `RemoteFacade` stub.
+- `session.js` (`TokenStore`) — persists the bearer token (and username) in `localStorage` so a
+  page refresh doesn't log the user out; analogous to `TokenManager`.
+- `views.js` (`Views`) — pure DOM rendering from plain data, no fetch calls and no app state.
+- `app.js` — the controller: wires DOM events to `ApiClient` calls and `Views` updates, the only
+  place that holds app state (which view is showing, the current task/plan data).
+
+The server-side `RemoteFacade`/`TokenManager` stubs (`server/src/remote/`) are left as-is for a
+possible future native client (e.g. the Android client mentioned under "The Future") — the web
+client below talks to the API directly over HTTP and doesn't need them.
 
 ### Phase 6 — Personalization (`PrioritizerNetwork`)
 - Train the per-user network from completion signal captured in Phase 2.
@@ -205,13 +281,14 @@ This section presents all the tasks that need to be done to complete the project
 - [x] Turn the priority score into a daily time budget (`DailyPlanner`, Phase 3)
 - [x] Create the server API (Flask, `server/src/api/`, Phase 4)
 ### Client
-- [ ] Create the client user interface
-- [ ] Create the client task management system
-- [ ] Create the client connection to the server
+- [x] Create the client user interface (`client/src/webapp/`, Phase 5)
+- [x] Create the client task management system (`api.js` + `app.js`: create/list/complete/delete)
+- [x] Create the client connection to the server (`api.js`, CORS-enabled, Phase 5)
 ### Tests
 - [x] Create the tests for the server (Prioritizer, DailyPlanner, TaskManager, UserManager,
   Api — `server/test/`)
-- [ ] Create the tests for the client
+- [x] Create the tests for the client (`client/test/Client_test.py`: page + static assets served;
+  no JS unit tests yet — the JS modules are untested beyond manual browser checks)
 ### Documentation
 - [ ] Create the documentation for the server
 - [ ] Create the documentation for the client
