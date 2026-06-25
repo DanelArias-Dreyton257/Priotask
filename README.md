@@ -323,12 +323,99 @@ Not yet done: there's no client UI to trigger training or show whether a user's 
 active, and the negative-example heuristic above is a first cut, not validated against real
 usage yet.
 
-### Phase 7 — Hardening
-- Tests for the DB/API/client layers, docs, install/update scripts (see TODO list below).
+### Phase 7 — Task lifecycle completeness
+Closes the two functional gaps left over from Phase 6, both about how task completion data is
+captured, plus the client UI that was deferred when Phase 6 shipped:
+- Let a task be marked partially done by logging `n` hours worked (e.g.
+  `POST /api/tasks/<id>/log-hours`), subtracting from `expected_duration_h` instead of only
+  supporting an all-or-nothing `complete`. Decide whether individual log entries are kept (useful
+  as richer training signal for Phase 6) or only the running total is stored.
+- Capture a real per-completion snapshot of "tasks on the table" instead of
+  `PrioritizerTrainer`'s current proxy (done tasks vs. currently-open tasks) — needs a new
+  table/column recording which task IDs were open at the moment of each completion.
+- Client UI for both: an "I worked N hours" action next to "Done"/"Delete" on each task, and a way
+  to trigger `POST /api/prioritizer/train` (status display is Phase 10).
+
+### Phase 8 — Task organization & editing (client usability)
+The task list today (`views.js`/`app.js`) is flat, ordered only by creation order, and
+uneditable from the UI even though the server already supports more — pure client work against
+existing APIs:
+- Edit-in-place for a task, calling the already-working `PUT /api/tasks/<id>`
+  (`task_routes.py:update_task`).
+- Sorting/grouping: by priority score (already returned by `/api/plan/today`), by deadline, or by
+  `task_type`/`task_subtype` (already collected on every task but never used for grouping in the
+  UI).
+- Filtering: hide done tasks (or a dedicated "done" tab), filter by type/subtype, search by name.
+- Visual urgency cues: overdue tasks (deadline at/before today) get a distinct style, surfacing in
+  the UI the same overdue/not-yet-due split `FormulaPrioritizer.urgency` already makes internally
+  (`d_i <= 0`), instead of that distinction only showing up as a score difference.
+
+### Phase 9 — Time visualization (weekly/calendar view)
+The main missing user-facing capability: today the user only ever sees a single day's plan, never
+a forward-looking view of their week.
+- New server capability: a multi-day plan endpoint (e.g. `GET /api/plan/week?days=7&hours=6`),
+  built by calling `DailyPlanner.plan` (or a small generalization of it) once per simulated day,
+  carrying each task's still-remaining effort forward into the next day — i.e. extend the existing
+  water-filling logic across N days instead of rewriting it.
+- Client: a week-view grid (7 columns, one per day) showing each day's planned tasks and hours,
+  alongside (not replacing) the existing single-day "Today's plan" list — e.g. a tab/toggle inside
+  `plan-section` between "Today" and "This week".
+- A per-day load indicator (planned hours vs. capacity) so overloaded days are visible at a
+  glance, built on `PrioritizerService.diagnostics()`'s `V/4`/`V/8` thresholds (already computed
+  server-side, never surfaced via the API or client today).
+- Deadline markers: tasks due within the visible week are flagged on their due day's column even
+  if no hours are scheduled there that day.
+
+### Phase 10 — Personalization visibility
+Surfaces the Phase 6 `PrioritizerNetwork` model, which already trains and scores server-side but
+is invisible to the user:
+- A status indicator ("learning" / "active" / "not enough data yet"), driven by
+  `POST /api/prioritizer/train`'s existing `{"trained": bool}` response.
+- A manual "retrain" action and/or an automatic trigger after N completions.
+- Optionally, show the formula score and the learned-correction score side by side, so a user can
+  see why ranking changed after training instead of just observing a re-sort.
+
+### Phase 11 — Hardening & polish
+- JS unit tests for `views.js`/`app.js`/`api.js` — today only `client/test/Client_test.py` exists
+  (a smoke test that the page and static assets are served), so the JS modules are untested beyond
+  manual browser checks.
+- Documentation for the server and client (module-level docs beyond this README).
+- Installation, uninstallation and update scripts, reusing/extending the existing
+  `scripts/run.sh` and `scripts/reset_db.sh` rather than duplicating them.
 
 ## The TODO List
-This section presents all the tasks that need to be done to complete the project.
-### Server
+This section presents all the tasks that need to be done to complete the project, grouped by the
+roadmap phase that owns them (see above for full descriptions).
+### Phase 7 — Task lifecycle completeness
+- [ ] Let a task be marked as partially done by logging `n` hours worked, subtracting that from
+  `expected_duration_h` instead of only supporting an all-or-nothing `complete`
+- [ ] Capture a real per-completion snapshot of "tasks on the table" instead of
+  `PrioritizerTrainer`'s current proxy (done tasks vs. currently-open tasks)
+- [ ] Client UI to trigger `/api/prioritizer/train`
+- [ ] Client UI for logging partial hours worked ("I worked N hours" action)
+### Phase 8 — Task organization & editing
+- [ ] Edit-in-place for a task in the client (`PUT /api/tasks/<id>` already exists server-side)
+- [ ] Sort tasks by score, deadline, or type/subtype in the client
+- [ ] Filter/search tasks (hide done, filter by type/subtype, search by name)
+- [ ] Visual styling for overdue tasks in the task list
+### Phase 9 — Time visualization
+- [ ] `GET /api/plan/week` multi-day plan endpoint (server)
+- [ ] Week-view grid in the client (7-day plan + hours per day)
+- [ ] Per-day load indicator using `PrioritizerService.diagnostics()` thresholds
+- [ ] Deadline markers on the week view
+### Phase 10 — Personalization visibility
+- [ ] Client UI showing whether a user has a trained `PrioritizerNetwork` ("learning" / "active" /
+  "not enough data yet")
+- [ ] Manual or auto-triggered retrain action in the client
+- [ ] Optional: show formula score vs. learned-correction score side by side
+### Phase 11 — Hardening & polish
+- [ ] JS unit tests for `views.js`/`app.js`/`api.js`
+- [ ] Create the documentation for the server
+- [ ] Create the documentation for the client
+- [ ] Create the installation script
+- [ ] Create the uninstallation script
+- [ ] Create the update script
+### Done (Phases 1-6)
 - [x] Create the server storage system through a sqlite3 database
 - [x] Create the server prioritizer based on the closed-form spec (`FormulaPrioritizer`)
 - [x] Create the server prioritizer as a neural network (`PrioritizerNetwork`, Phase 6: 3-layer
@@ -339,27 +426,13 @@ This section presents all the tasks that need to be done to complete the project
 - [x] Create the server API (Flask, `server/src/api/`, Phase 4)
 - [x] Persist per-user model weights in a model-agnostic way (`ModelStore`/`model_weights` table,
   Phase 6) so a future model (e.g. XGBoost) can be added without changing the storage layer
-- [ ] Let a task be marked as partially done by logging `n` hours worked, subtracting that from
-  `expected_duration_h` instead of only supporting an all-or-nothing `complete`
-- [ ] Capture a real per-completion snapshot of "tasks on the table" instead of
-  `PrioritizerTrainer`'s current proxy (done tasks vs. currently-open tasks)
-- [ ] Client UI to trigger `/api/prioritizer/train` and show whether a user has a trained network
-### Client
 - [x] Create the client user interface (`client/src/webapp/`, Phase 5)
 - [x] Create the client task management system (`api.js` + `app.js`: create/list/complete/delete)
 - [x] Create the client connection to the server (`api.js`, CORS-enabled, Phase 5)
-### Tests
 - [x] Create the tests for the server (Prioritizer, DailyPlanner, TaskManager, UserManager,
   Api — `server/test/`)
 - [x] Create the tests for the client (`client/test/Client_test.py`: page + static assets served;
-  no JS unit tests yet — the JS modules are untested beyond manual browser checks)
-### Documentation
-- [ ] Create the documentation for the server
-- [ ] Create the documentation for the client
-### Other
-- [ ] Create the installation script
-- [ ] Create the uninstallation script
-- [ ] Create the update script
+  no JS unit tests yet, see Phase 11)
 - [x] Create a script that launches the server and the client together (`scripts/run.sh`, one
   command instead of two separate `python -m server.src.Server` /
   `python -m client.src.Client` terminals)
