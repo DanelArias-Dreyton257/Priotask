@@ -58,6 +58,14 @@ class TaskManager:
         rows = self.dao.get_tasks_for_user(user_id)
         return [self._domain_to_dto(self._row_to_domain(row)) for row in rows]
 
+    def get_domain_tasks_for_user(self, user_id: int) -> List[Task]:
+        """Like get_tasks_for_user, but returns Task domain objects (e.g. for DailyPlanner)."""
+        rows = self.dao.get_tasks_for_user(user_id)
+        return [self._row_to_domain(row) for row in rows]
+
+    def to_dto(self, task: Task) -> TaskDTO:
+        return self._domain_to_dto(task)
+
     def update_task(self, task_id: int, name: str, deadline: datetime, expected_duration_h: float,
                      importance: int, task_type: str = "", task_subtype: str = "") -> None:
         self.dao.update_task(
