@@ -2,7 +2,7 @@
 Priotask helps manage and prioritize tasks for effective time management, allowing users to quickly focus on important tasks and meet deadlines. It streamlines manual workload management.
 
 ## Getting Started
-Everything needed to run Phases 1-8 locally and try the app end to end.
+Everything needed to run Phases 1-9 locally and try the app end to end.
 
 ### 1. Set up the environment
 ```
@@ -55,7 +55,12 @@ Open `http://localhost:5500` in a browser:
    deadline/type, and a **Show completed** checkbox to reveal done tasks (hidden by default).
    Overdue tasks are highlighted. Type/sub-type on the task form (and the edit form) are dropdowns
    of categories you've already used, with a "+ Add new..." option for a new one.
-6. **Train priority model** fits the user's `PrioritizerNetwork` (Phase 6) on their task history so
+6. The **Timetable** panel has a **Today** / **This week** toggle (Phase 9). "This week" shows a
+   7-day grid: each day's planned tasks and hours, a load bar (planned hours vs. that day's
+   capacity), and any task deadlines falling on that day even if no hours were scheduled for it
+   ("Due: ..."). "Hours available per day" + **Refresh week** re-fetches it with a different daily
+   budget.
+7. **Train priority model** fits the user's `PrioritizerNetwork` (Phase 6) on their task history so
    far — it reports whether there was enough completion history to actually train on.
 
 ### 5. Run the tests
@@ -116,7 +121,7 @@ Priotask/
     │   │   ├── auth.py       # require_auth decorator (Bearer token -> g.user_id)
     │   │   ├── user_routes.py        # POST /users, /auth/login, /auth/logout
     │   │   ├── task_routes.py        # CRUD for /tasks (+ /complete, /log-hours, Phase 7)
-    │   │   ├── plan_routes.py        # GET /plan/today (DailyPlanner, Phase 3)
+    │   │   ├── plan_routes.py        # GET /plan/today (Phase 3), GET /plan/week (Phase 9)
     │   │   └── prioritizer_routes.py # POST /prioritizer/train (PrioritizerTrainer, Phase 6)
     │   ├── data/
     │   │   ├── db/           # DB access: DB.py (sqlite3, schema for users/tasks/model_weights/
@@ -138,7 +143,9 @@ Priotask/
     │           ├── PrioritizerNetwork.py    # Per-user Keras NN: correction on v_i (Phase 6)
     │           ├── PrioritizerTrainer.py    # Builds training set from task history, fits/saves (Phase 6)
     │           ├── PrioritizerService.py    # Ranking (rank) + diagnostics, model-agnostic
-    │           └── DailyPlanner.py          # v_i -> recommended_hours_today (Phase 3, done)
+    │           └── DailyPlanner.py          # v_i -> recommended_hours_today (Phase 3); plan_week
+    │                                        # carries remaining effort across N simulated days
+    │                                        # (Phase 9)
     └── test/
         ├── Prioritizer_test.py        # Unit tests for FormulaPrioritizer/PrioritizerService
         ├── PrioritizerNetwork_test.py # Unit tests for FeatureExtractor/ModelStore/PrioritizerNetwork/Trainer
@@ -435,22 +442,32 @@ Verified end to end with a Playwright-driven browser run (register/login, create
 upcoming tasks across categories, exercise every filter/sort/edit control, confirm the rendered
 DOM and styling) on top of the existing `client/test/Client_test.py` smoke coverage.
 
-### Phase 9 — Time visualization (weekly/calendar view)
-The main missing user-facing capability: today the user only ever sees a single day's plan, never
-a forward-looking view of their week.
-- New server capability: a multi-day plan endpoint (e.g. `GET /api/plan/week?days=7&hours=6`),
-  built by calling `DailyPlanner.plan` (or a small generalization of it) once per simulated day,
-  carrying each task's still-remaining effort forward into the next day — i.e. extend the existing
-  water-filling logic across N days instead of rewriting it.
-- Client: a week-view grid (7 columns, one per day) showing each day's planned tasks and hours,
-  alongside (not replacing) the existing single-day "Today's plan" list — a tab/toggle between
-  "Today" and "This week" inside whatever hosts the plan view (`plan-section` today, the
-  Timetable window once Phase 13's navigation shell exists).
-- A per-day load indicator (planned hours vs. capacity) so overloaded days are visible at a
-  glance, built on `PrioritizerService.diagnostics()`'s `V/4`/`V/8` thresholds (already computed
-  server-side, never surfaced via the API or client today).
-- Deadline markers: tasks due within the visible week are flagged on their due day's column even
-  if no hours are scheduled there that day.
+### Phase 9 — Time visualization (weekly/calendar view) (done)
+The main missing user-facing capability: previously the user only ever saw a single day's plan,
+never a forward-looking view of their week.
+- **`DailyPlanner.plan_week`** (`server/src/services/Prioritizer/DailyPlanner.py`) generalizes
+  `plan()` across `days` simulated days: each day calls the existing `plan()` (eligibility +
+  ranking + water-filling, unchanged), then subtracts that day's `recommended_hours_today` from
+  each task's remaining effort (on a per-call clone, never mutating the caller's tasks) before
+  ranking the next day — a task fully covered on one day stops competing for budget on the next.
+  Each day's `PlanEntry`s are snapshotted (cloned) before that mutation, so an earlier day never
+  retroactively shows a task as `done` once a later day finishes covering it.
+- **`GET /api/plan/week?days=7&hours=6`** (`plan_routes.py`) returns one entry per day: ranked
+  tasks + hours (as `/plan/today` does), `planned_hours_total` and `available_hours` (the load
+  indicator), the day's `diagnostics` (`PrioritizerService.diagnostics()`'s mean/std/`V`/`V/4`/`V/8`,
+  computed server-side since Phase 1 but never surfaced via the API until now), and `deadlines` —
+  tasks due that day even if they got no hours that day (e.g. already fully scheduled earlier in
+  the week). `days` is bounded to `[1, 31]`.
+- Client: a **Today** / **This week** toggle in the `plan-section` ("Timetable"), wired in `app.js`
+  (`showingWeekPlan`) — "This week" renders a 7-day grid (`Views.renderWeekPlan`, `views.js`), one
+  card per day with a load bar (planned hours vs. that day's capacity, redder past 100%), the
+  day's planned tasks/hours, and a "Due: ..." line for that day's deadlines. A second "Hours
+  available per day" + "Refresh week" form (`#week-plan-form`) re-fetches it with a different
+  daily budget, independent of the Today tab's own hours input.
+
+Verified end to end with a Playwright-driven browser run (login, create a multi-day task, switch
+to the week tab, confirm hours carry forward across days and the deadline marker appears on the
+due day) on top of new server-side unit/API test coverage (`DailyPlanner_test.py`, `Api_test.py`).
 
 ### Phase 10 — Personalization visibility
 Surfaces the Phase 6 `PrioritizerNetwork` model, which already trains and scores server-side but
@@ -547,11 +564,11 @@ roadmap phase that owns them (see above for full descriptions).
 - [x] Filter the task list by type and/or subtype (via the dropdowns above)
 - [x] Filter/search tasks (hide done, search by name)
 - [x] Visual styling for overdue tasks in the task list
-### Phase 9 — Time visualization
-- [ ] `GET /api/plan/week` multi-day plan endpoint (server)
-- [ ] Week-view grid in the client (7-day plan + hours per day)
-- [ ] Per-day load indicator using `PrioritizerService.diagnostics()` thresholds
-- [ ] Deadline markers on the week view
+### Phase 9 — Time visualization (done)
+- [x] `GET /api/plan/week` multi-day plan endpoint (server)
+- [x] Week-view grid in the client (7-day plan + hours per day)
+- [x] Per-day load indicator using `PrioritizerService.diagnostics()` thresholds
+- [x] Deadline markers on the week view
 ### Phase 10 — Personalization visibility
 - [ ] `GET /api/prioritizer/status` (trained?/`updated_at`) — server, reads `ModelWeightsDAO`
   without retraining
