@@ -341,3 +341,9 @@ ul {
     font-size: 0.78rem;
     color: #888;
 }
+
+.day-entry-more {
+    font-size: 0.72rem;
+    color: #888;
+    font-style: italic;
+}

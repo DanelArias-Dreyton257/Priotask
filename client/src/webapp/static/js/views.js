@@ -284,11 +284,22 @@ function buildDayCard(day, isToday) {
         <span class="day-load-label">${day.planned_hours_total.toFixed(1)}h / ${capacity.toFixed(1)}h</span>
     `;
 
+    // day.entries includes every eligible task even ones the water-filling
+    // budget never reached (0h that day) - showing those just pads out the
+    // card with rows that have nothing to say, burying the "Due: ..." line
+    // below. Only scheduled tasks are worth a row, and only the top ones.
+    // Rounded to one decimal for display below, so the threshold matches -
+    // otherwise a sliver of an hour survives the filter but still prints "0.0h".
+    const scheduled = day.entries.filter((entry) => entry.recommended_hours_today >= 0.05);
+    const MAX_VISIBLE_ENTRIES = 10;
+    const visible = scheduled.slice(0, MAX_VISIBLE_ENTRIES);
+    const hiddenCount = scheduled.length - visible.length;
+
     const entries = document.createElement("div");
-    if (day.entries.length === 0) {
+    if (visible.length === 0) {
         entries.innerHTML = "<span class='day-empty'>Nothing scheduled</span>";
     } else {
-        for (const entry of day.entries) {
+        for (const entry of visible) {
             const entryEl = document.createElement("div");
             entryEl.className = "day-entry";
             entryEl.innerHTML = `
@@ -296,6 +307,12 @@ function buildDayCard(day, isToday) {
                 <span>${entry.recommended_hours_today.toFixed(1)}h</span>
             `;
             entries.appendChild(entryEl);
+        }
+        if (hiddenCount > 0) {
+            const moreEl = document.createElement("div");
+            moreEl.className = "day-entry-more";
+            moreEl.textContent = `+${hiddenCount} more`;
+            entries.appendChild(moreEl);
         }
     }
     card.appendChild(entries);
