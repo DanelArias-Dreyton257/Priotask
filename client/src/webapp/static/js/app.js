@@ -14,6 +14,7 @@ const api = new ApiClient(window.PRIOTASK_API_BASE_URL);
 let allTasks = [];
 let scoreByTaskId = new Map();
 let editingTaskId = null;
+let showingWeekPlan = false;
 
 async function refreshTasksAndPlan() {
     const hours = document.getElementById("hours-input").value || undefined;
@@ -23,6 +24,13 @@ async function refreshTasksAndPlan() {
     refreshCategoryOptions();
     renderTaskList();
     Views.renderPlan(plan);
+    if (showingWeekPlan) await refreshWeekPlan();
+}
+
+async function refreshWeekPlan() {
+    const hours = document.getElementById("week-hours-input").value || undefined;
+    const days = await api.getWeekPlan(hours, 7);
+    Views.renderWeekPlan(days);
 }
 
 function distinctValues(field) {
@@ -214,6 +222,28 @@ document.getElementById("task-form").addEventListener("submit", (event) => {
 document.getElementById("plan-form").addEventListener("submit", (event) => {
     event.preventDefault();
     runOrReportError(refreshTasksAndPlan);
+});
+
+document.getElementById("week-plan-form").addEventListener("submit", (event) => {
+    event.preventDefault();
+    runOrReportError(refreshWeekPlan);
+});
+
+document.getElementById("plan-tab-today").addEventListener("click", () => {
+    showingWeekPlan = false;
+    document.getElementById("plan-tab-today").classList.add("active");
+    document.getElementById("plan-tab-week").classList.remove("active");
+    document.getElementById("plan-today-view").classList.remove("hidden");
+    document.getElementById("plan-week-view").classList.add("hidden");
+});
+
+document.getElementById("plan-tab-week").addEventListener("click", () => {
+    showingWeekPlan = true;
+    document.getElementById("plan-tab-week").classList.add("active");
+    document.getElementById("plan-tab-today").classList.remove("active");
+    document.getElementById("plan-week-view").classList.remove("hidden");
+    document.getElementById("plan-today-view").classList.add("hidden");
+    runOrReportError(refreshWeekPlan);
 });
 
 document.getElementById("train-button").addEventListener("click", () => {

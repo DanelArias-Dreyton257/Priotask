@@ -87,6 +87,14 @@ export class ApiClient {
         const query = hours !== undefined ? `?hours=${encodeURIComponent(hours)}` : "";
         return this._request("GET", `/api/plan/today${query}`, { auth: true });
     }
+
+    getWeekPlan(hours, days) {
+        const params = new URLSearchParams();
+        if (hours !== undefined) params.set("hours", hours);
+        if (days !== undefined) params.set("days", days);
+        const query = params.toString() ? `?${params.toString()}` : "";
+        return this._request("GET", `/api/plan/week${query}`, { auth: true });
+    }
 }
 
 export { ApiError };

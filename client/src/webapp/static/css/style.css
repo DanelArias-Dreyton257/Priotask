@@ -227,3 +227,89 @@ ul {
 .cancel-edit {
     background: #6b7280;
 }
+
+.plan-tabs {
+    display: flex;
+    gap: 0.4rem;
+    margin-bottom: 0.75rem;
+}
+
+.plan-tab {
+    background: #e5e7eb;
+    color: #1f2430;
+}
+
+.plan-tab.active {
+    background: #2f6fed;
+    color: white;
+}
+
+#week-plan-form {
+    flex-direction: row;
+    align-items: center;
+    margin-bottom: 0.75rem;
+}
+
+#week-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(7.5rem, 1fr));
+    gap: 0.5rem;
+}
+
+.day-card {
+    background: #f8f9fb;
+    border: 1px solid #eee;
+    border-radius: 6px;
+    padding: 0.5rem;
+    display: flex;
+    flex-direction: column;
+    gap: 0.35rem;
+    min-width: 0;
+}
+
+.day-card.is-today {
+    border-color: #2f6fed;
+}
+
+.day-card-date {
+    font-weight: 600;
+    font-size: 0.85rem;
+}
+
+.day-load-bar {
+    height: 0.4rem;
+    border-radius: 4px;
+    background: #e5e7eb;
+    overflow: hidden;
+}
+
+.day-load-bar-fill {
+    height: 100%;
+    background: #2e9e5b;
+}
+
+.day-load-bar-fill.overloaded {
+    background: #d9534f;
+}
+
+.day-load-label {
+    font-size: 0.75rem;
+    color: #6b7280;
+}
+
+.day-entry {
+    font-size: 0.78rem;
+    display: flex;
+    justify-content: space-between;
+    gap: 0.25rem;
+}
+
+.day-deadlines {
+    font-size: 0.72rem;
+    color: #9b1c1c;
+}
+
+.day-empty {
+    font-size: 0.78rem;
+    color: #888;
+}

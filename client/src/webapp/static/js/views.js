@@ -109,6 +109,19 @@ export const Views = {
     resetForm(form) {
         form.reset();
     },
+
+    // Phase 9: a 7(+)-day grid, one card per day - planned tasks/hours, a
+    // load bar (planned hours vs. that day's capacity) and any deadlines
+    // falling on that day even if no hours were scheduled for them.
+    renderWeekPlan(days) {
+        const grid = document.getElementById("week-grid");
+        grid.innerHTML = "";
+
+        const today = new Date().toISOString().slice(0, 10);
+        for (const day of days) {
+            grid.appendChild(buildDayCard(day, day.date === today));
+        }
+    },
 };
 
 function isOverdue(task) {
@@ -237,6 +250,47 @@ function buildEditItem(task, categories, onSaveEdit, onCancelEdit) {
 
     item.appendChild(form);
     return item;
+}
+
+function buildDayCard(day, isToday) {
+    const card = document.createElement("div");
+    card.className = "day-card" + (isToday ? " is-today" : "");
+
+    const capacity = day.available_hours;
+    const ratio = capacity > 0 ? Math.min(1, day.planned_hours_total / capacity) : 0;
+    const overloaded = day.planned_hours_total > capacity + 1e-9;
+
+    const weekday = new Date(`${day.date}T00:00:00`).toLocaleDateString(undefined, { weekday: "short" });
+    card.innerHTML = `
+        <span class="day-card-date">${weekday} ${day.date.slice(5)}</span>
+        <div class="day-load-bar"><div class="day-load-bar-fill${overloaded ? " overloaded" : ""}" style="width: ${(ratio * 100).toFixed(0)}%"></div></div>
+        <span class="day-load-label">${day.planned_hours_total.toFixed(1)}h / ${capacity.toFixed(1)}h</span>
+    `;
+
+    const entries = document.createElement("div");
+    if (day.entries.length === 0) {
+        entries.innerHTML = "<span class='day-empty'>Nothing scheduled</span>";
+    } else {
+        for (const entry of day.entries) {
+            const entryEl = document.createElement("div");
+            entryEl.className = "day-entry";
+            entryEl.innerHTML = `
+                <span>#${entry.rank} ${escapeHtml(entry.task.name)}</span>
+                <span>${entry.recommended_hours_today.toFixed(1)}h</span>
+            `;
+            entries.appendChild(entryEl);
+        }
+    }
+    card.appendChild(entries);
+
+    if (day.deadlines.length > 0) {
+        const deadlines = document.createElement("div");
+        deadlines.className = "day-deadlines";
+        deadlines.textContent = `Due: ${day.deadlines.map((task) => task.name).join(", ")}`;
+        card.appendChild(deadlines);
+    }
+
+    return card;
 }
 
 function optionEl(value, label) {
