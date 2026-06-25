@@ -60,7 +60,7 @@ export const Views = {
                 logHoursForm.className = "log-hours-form";
                 logHoursForm.innerHTML = `
                     <input type="number" min="0.5" step="0.5" placeholder="Hours" required>
-                    <button type="submit">Log hours</button>
+                    <button type="submit">Log</button>
                 `;
                 logHoursForm.addEventListener("submit", (event) => {
                     event.preventDefault();
