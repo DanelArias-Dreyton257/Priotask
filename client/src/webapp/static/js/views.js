@@ -291,7 +291,7 @@ function buildDayCard(day, isToday) {
     // Rounded to one decimal for display below, so the threshold matches -
     // otherwise a sliver of an hour survives the filter but still prints "0.0h".
     const scheduled = day.entries.filter((entry) => entry.recommended_hours_today >= 0.05);
-    const MAX_VISIBLE_ENTRIES = 10;
+    const MAX_VISIBLE_ENTRIES = 5;
     const visible = scheduled.slice(0, MAX_VISIBLE_ENTRIES);
     const hiddenCount = scheduled.length - visible.length;
 
