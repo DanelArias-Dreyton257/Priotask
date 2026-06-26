@@ -4,11 +4,29 @@ from datetime import datetime
 from flask import Blueprint, current_app, g, jsonify, request
 
 from server.src.api.auth import require_auth
+from server.src.services.Recurrence import RECURRENCE_UNITS
 
 task_bp = Blueprint("tasks", __name__)
 
 
 def _parse_task_fields(body: dict) -> dict:
+    recurrence_unit = body.get("recurrence_unit") or None
+    if recurrence_unit is not None and recurrence_unit not in RECURRENCE_UNITS:
+        raise ValueError(f"recurrence_unit must be one of {RECURRENCE_UNITS}")
+
+    recurrence_interval = body.get("recurrence_interval")
+    recurrence_interval = int(recurrence_interval) if recurrence_interval not in (None, "") else None
+    if recurrence_unit is not None:
+        recurrence_interval = recurrence_interval or 1
+        if recurrence_interval <= 0:
+            raise ValueError("recurrence_interval must be a positive integer")
+    else:
+        recurrence_interval = None
+
+    recurrence_end_date = body.get("recurrence_end_date") or None
+    if recurrence_end_date is not None:
+        recurrence_end_date = datetime.fromisoformat(recurrence_end_date)
+
     return {
         "name": body["name"],
         "deadline": datetime.fromisoformat(body["deadline"]),
@@ -16,6 +34,9 @@ def _parse_task_fields(body: dict) -> dict:
         "importance": int(body["importance"]),
         "task_type": body.get("task_type", ""),
         "task_subtype": body.get("task_subtype", ""),
+        "recurrence_unit": recurrence_unit,
+        "recurrence_interval": recurrence_interval,
+        "recurrence_end_date": recurrence_end_date,
     }
 
 

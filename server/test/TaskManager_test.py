@@ -135,6 +135,84 @@ class TaskManagerTest(unittest.TestCase):
     def test_log_hours_returns_none_when_missing(self):
         self.assertIsNone(self.manager.log_hours(999, 1.0))
 
+    def test_create_task_persists_recurrence_fields(self):
+        dto = self.manager.create_task(
+            user_id=self.user_id, name="standup", deadline=REFERENCE, expected_duration_h=0.5,
+            importance=2, recurrence_unit="day", recurrence_interval=1,
+        )
+        fetched = self.manager.get_task(dto.task_id)
+        self.assertEqual(fetched.recurrence_unit, "day")
+        self.assertEqual(fetched.recurrence_interval, 1)
+        self.assertIsNone(fetched.recurrence_end_date)
+
+    def test_mark_done_spawns_next_occurrence_daily(self):
+        created = self.manager.create_task(
+            user_id=self.user_id, name="standup", deadline=REFERENCE, expected_duration_h=0.5,
+            importance=2, recurrence_unit="day", recurrence_interval=1,
+        )
+        self.manager.mark_done(created.task_id, REFERENCE)
+
+        tasks = self.manager.get_tasks_for_user(self.user_id)
+        self.assertEqual(len(tasks), 2)
+        spawned = next(t for t in tasks if t.task_id != created.task_id)
+        self.assertEqual(spawned.name, "standup")
+        self.assertFalse(spawned.done)
+        self.assertEqual(spawned.deadline, (REFERENCE + timedelta(days=1)).isoformat())
+        self.assertEqual(spawned.recurrence_unit, "day")
+
+    def test_mark_done_spawns_next_occurrence_weekly_with_interval(self):
+        created = self.manager.create_task(
+            user_id=self.user_id, name="laundry", deadline=REFERENCE, expected_duration_h=1.0,
+            importance=2, recurrence_unit="week", recurrence_interval=2,
+        )
+        self.manager.mark_done(created.task_id, REFERENCE)
+
+        tasks = self.manager.get_tasks_for_user(self.user_id)
+        spawned = next(t for t in tasks if t.task_id != created.task_id)
+        self.assertEqual(spawned.deadline, (REFERENCE + timedelta(weeks=2)).isoformat())
+
+    def test_mark_done_spawns_next_occurrence_monthly_clamps_month_end(self):
+        created = self.manager.create_task(
+            user_id=self.user_id, name="rent", deadline=datetime(2026, 1, 31),
+            expected_duration_h=1.0, importance=2, recurrence_unit="month", recurrence_interval=1,
+        )
+        self.manager.mark_done(created.task_id, REFERENCE)
+
+        tasks = self.manager.get_tasks_for_user(self.user_id)
+        spawned = next(t for t in tasks if t.task_id != created.task_id)
+        self.assertEqual(spawned.deadline, datetime(2026, 2, 28).isoformat())
+
+    def test_mark_done_does_not_spawn_past_recurrence_end_date(self):
+        created = self.manager.create_task(
+            user_id=self.user_id, name="standup", deadline=REFERENCE, expected_duration_h=0.5,
+            importance=2, recurrence_unit="day", recurrence_interval=1,
+            recurrence_end_date=REFERENCE,
+        )
+        self.manager.mark_done(created.task_id, REFERENCE)
+
+        tasks = self.manager.get_tasks_for_user(self.user_id)
+        self.assertEqual(len(tasks), 1)
+
+    def test_mark_done_does_not_spawn_for_non_recurring_task(self):
+        created = self.manager.create_task(
+            user_id=self.user_id, name="one-off", deadline=REFERENCE, expected_duration_h=1.0,
+            importance=1,
+        )
+        self.manager.mark_done(created.task_id, REFERENCE)
+
+        tasks = self.manager.get_tasks_for_user(self.user_id)
+        self.assertEqual(len(tasks), 1)
+
+    def test_log_hours_completing_recurring_task_also_spawns(self):
+        created = self.manager.create_task(
+            user_id=self.user_id, name="watering", deadline=REFERENCE, expected_duration_h=1.0,
+            importance=1, recurrence_unit="day", recurrence_interval=1,
+        )
+        self.manager.log_hours(created.task_id, 1.0, REFERENCE)
+
+        tasks = self.manager.get_tasks_for_user(self.user_id)
+        self.assertEqual(len(tasks), 2)
+
 
 if __name__ == "__main__":
     unittest.main()

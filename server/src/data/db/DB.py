@@ -21,6 +21,9 @@ CREATE TABLE IF NOT EXISTS tasks (
     task_subtype TEXT NOT NULL DEFAULT '',
     done INTEGER NOT NULL DEFAULT 0,
     completed_at TEXT,
+    recurrence_unit TEXT,
+    recurrence_interval INTEGER,
+    recurrence_end_date TEXT,
     FOREIGN KEY (user_id) REFERENCES users (user_id)
 );
 
@@ -43,6 +46,16 @@ CREATE TABLE IF NOT EXISTS completion_snapshots (
 );
 """
 
+# Phase 11 (recurring tasks) added three columns to `tasks` after this project's only
+# schema-creation path (CREATE TABLE IF NOT EXISTS, no migration system). An on-disk
+# priotask.db created before this change won't get them from SCHEMA alone, so they're
+# added here via ALTER TABLE, guarded by a PRAGMA check so it's a no-op on fresh DBs.
+_TASKS_RECURRENCE_COLUMNS = {
+    "recurrence_unit": "TEXT",
+    "recurrence_interval": "INTEGER",
+    "recurrence_end_date": "TEXT",
+}
+
 
 class DB:
     """
@@ -63,8 +76,15 @@ class DB:
         self.connection.row_factory = sqlite3.Row
         self.connection.execute("PRAGMA foreign_keys = ON")
         self.connection.executescript(SCHEMA)
+        self._migrate_tasks_recurrence_columns()
         self.connection.commit()
         return self
+
+    def _migrate_tasks_recurrence_columns(self) -> None:
+        existing = {row["name"] for row in self.connection.execute("PRAGMA table_info(tasks)")}
+        for column, sql_type in _TASKS_RECURRENCE_COLUMNS.items():
+            if column not in existing:
+                self.connection.execute(f"ALTER TABLE tasks ADD COLUMN {column} {sql_type}")
 
     def execute(self, query: str, params: Sequence[Any] = ()) -> sqlite3.Cursor:
         cursor = self.connection.execute(query, params)

@@ -15,3 +15,6 @@ class TaskDTO:
     task_subtype: str = ""
     done: bool = False
     completed_at: Optional[str] = None
+    recurrence_unit: Optional[str] = None
+    recurrence_interval: Optional[int] = None
+    recurrence_end_date: Optional[str] = None

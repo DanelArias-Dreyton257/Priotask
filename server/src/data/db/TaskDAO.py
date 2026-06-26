@@ -9,11 +9,15 @@ class TaskDAO(object):
         self.db = db or DB().connect()
 
     def add_task(self, user_id: int, name: str, deadline: str, expected_duration_h: float,
-                 importance: int, task_type: str, task_subtype: str) -> int:
+                 importance: int, task_type: str, task_subtype: str,
+                 recurrence_unit: Optional[str] = None, recurrence_interval: Optional[int] = None,
+                 recurrence_end_date: Optional[str] = None) -> int:
         cursor = self.db.execute(
             "INSERT INTO tasks (user_id, name, deadline, expected_duration_h, importance, "
-            "task_type, task_subtype) VALUES (?, ?, ?, ?, ?, ?, ?)",
-            (user_id, name, deadline, expected_duration_h, importance, task_type, task_subtype),
+            "task_type, task_subtype, recurrence_unit, recurrence_interval, recurrence_end_date) "
+            "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+            (user_id, name, deadline, expected_duration_h, importance, task_type, task_subtype,
+             recurrence_unit, recurrence_interval, recurrence_end_date),
         )
         return cursor.lastrowid
 
@@ -26,11 +30,15 @@ class TaskDAO(object):
         return self.db.execute(query, (user_id,)).fetchall()
 
     def update_task(self, task_id: int, name: str, deadline: str, expected_duration_h: float,
-                    importance: int, task_type: str, task_subtype: str) -> None:
+                    importance: int, task_type: str, task_subtype: str,
+                    recurrence_unit: Optional[str] = None, recurrence_interval: Optional[int] = None,
+                    recurrence_end_date: Optional[str] = None) -> None:
         self.db.execute(
             "UPDATE tasks SET name = ?, deadline = ?, expected_duration_h = ?, importance = ?, "
-            "task_type = ?, task_subtype = ? WHERE task_id = ?",
-            (name, deadline, expected_duration_h, importance, task_type, task_subtype, task_id),
+            "task_type = ?, task_subtype = ?, recurrence_unit = ?, recurrence_interval = ?, "
+            "recurrence_end_date = ? WHERE task_id = ?",
+            (name, deadline, expected_duration_h, importance, task_type, task_subtype,
+             recurrence_unit, recurrence_interval, recurrence_end_date, task_id),
         )
 
     def update_duration(self, task_id: int, expected_duration_h: float) -> None:

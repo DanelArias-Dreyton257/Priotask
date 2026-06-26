@@ -329,6 +329,37 @@ class ApiTest(unittest.TestCase):
         )
         self.assertEqual(response.status_code, 400)
 
+    def test_create_task_with_recurrence_fields(self):
+        token = self._register_and_login()
+        response = self._create_task(
+            token, name="standup", deadline=REFERENCE.isoformat(), expected_duration_h=0.5,
+            recurrence_unit="week", recurrence_interval=2,
+        )
+        self.assertEqual(response.status_code, 201)
+        body = response.get_json()
+        self.assertEqual(body["recurrence_unit"], "week")
+        self.assertEqual(body["recurrence_interval"], 2)
+
+    def test_create_task_rejects_invalid_recurrence_unit(self):
+        token = self._register_and_login()
+        response = self._create_task(token, recurrence_unit="fortnight")
+        self.assertEqual(response.status_code, 400)
+
+    def test_completing_recurring_task_spawns_next_occurrence(self):
+        token = self._register_and_login()
+        task_id = self._create_task(
+            token, name="standup", deadline=REFERENCE.isoformat(), expected_duration_h=0.5,
+            recurrence_unit="day", recurrence_interval=1,
+        ).get_json()["task_id"]
+
+        self.client.post(f"/api/tasks/{task_id}/complete", headers=self._auth_headers(token))
+
+        listed = self.client.get("/api/tasks", headers=self._auth_headers(token)).get_json()
+        self.assertEqual(len(listed), 2)
+        spawned = next(t for t in listed if t["task_id"] != task_id)
+        self.assertFalse(spawned["done"])
+        self.assertEqual(spawned["deadline"], (REFERENCE + timedelta(days=1)).isoformat())
+
     def test_account_routes_require_auth(self):
         self.assertEqual(self.client.put("/api/users/me", json={"email": "x@x.com"}).status_code, 401)
         self.assertEqual(
