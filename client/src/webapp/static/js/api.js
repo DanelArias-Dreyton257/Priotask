@@ -103,6 +103,21 @@ export class ApiClient {
         const query = params.toString() ? `?${params.toString()}` : "";
         return this._request("GET", `/api/plan/week${query}`, { auth: true });
     }
+
+    getMe() {
+        return this._request("GET", "/api/users/me", { auth: true });
+    }
+
+    updateEmail(email) {
+        return this._request("PUT", "/api/users/me", { body: { email }, auth: true });
+    }
+
+    changePassword(currentPassword, newPassword) {
+        return this._request("POST", "/api/users/me/password", {
+            body: { current_password: currentPassword, new_password: newPassword },
+            auth: true,
+        });
+    }
 }
 
 export { ApiError };

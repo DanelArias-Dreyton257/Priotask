@@ -2,7 +2,7 @@
 Priotask helps manage and prioritize tasks for effective time management, allowing users to quickly focus on important tasks and meet deadlines. It streamlines manual workload management.
 
 ## Getting Started
-Everything needed to run Phases 1-9 locally and try the app end to end.
+Everything needed to run Phases 1-10 and 13 locally and try the app end to end.
 
 ### 1. Set up the environment
 ```
@@ -43,9 +43,13 @@ Steps 2 and 3 can be replaced with one command/terminal, `./scripts/run.sh` (see
 Open `http://localhost:5500` in a browser:
 1. **Register** a user (or **Log in** if you already have one) — registering logs you in
    automatically.
-2. Add a task with the **New task** form (name, deadline, effort in hours, importance 1-10).
-3. The task shows up under **Your tasks**, and **Today's plan** shows the recommended hours to
-   spend on it today (`DailyPlanner`, Phase 3) alongside its priority rank.
+2. Once logged in, a **Tasks** / **Timetable** / **Prioritizer** / **Account** nav bar (Phase 13)
+   switches between four windows client-side with no page reload; it always opens on
+   **Timetable**, so you land on "what to work on" rather than the raw task list.
+3. In the **Tasks** window, add a task with the **New task** form (name, deadline, effort in
+   hours, importance 1-10). It shows up under **Your tasks**, and the **Timetable** window's
+   "Today's plan" shows the recommended hours to spend on it today (`DailyPlanner`, Phase 3)
+   alongside its priority rank.
 4. **Done** marks a task complete, **Delete** removes it, **Edit** turns the task into an inline
    form to change any of its fields, and **Log hours** logs partial progress (subtracting from the
    task's remaining effort, auto-completing it once none is left); all of these refresh **Today's
@@ -55,16 +59,19 @@ Open `http://localhost:5500` in a browser:
    deadline/type, and a **Show completed** checkbox to reveal done tasks (hidden by default).
    Overdue tasks are highlighted. Type/sub-type on the task form (and the edit form) are dropdowns
    of categories you've already used, with a "+ Add new..." option for a new one.
-6. The **Timetable** panel has a **Today** / **This week** toggle (Phase 9). "This week" shows a
+6. The **Timetable** window has a **Today** / **This week** toggle (Phase 9). "This week" shows a
    7-day grid: each day's planned tasks and hours, a load bar (planned hours vs. that day's
    capacity), and any task deadlines falling on that day even if no hours were scheduled for it
    ("Due: ..."). "Hours available per day" + **Refresh week** re-fetches it with a different daily
    budget.
-7. **Train priority model** fits the user's `PrioritizerNetwork` (Phase 6) on their task history so
-   far — it reports whether there was enough completion history to actually train on. The status
-   line next to it (Phase 10) shows whether a trained model is currently active and when it was
-   last trained, without itself triggering training; **Reset model** (shown once a model is
-   active) discards it and reverts to formula-only scoring.
+7. The **Prioritizer** window's **Train priority model** fits the user's `PrioritizerNetwork`
+   (Phase 6) on their task history so far — it reports whether there was enough completion history
+   to actually train on. The status line next to it (Phase 10) shows whether a trained model is
+   currently active and when it was last trained, without itself triggering training; **Reset
+   model** (shown once a model is active) discards it and reverts to formula-only scoring.
+8. The **Account** window (Phase 13) shows the logged-in user's username/email, and lets them
+   update their email or change their password (the current password is verified server-side
+   before the change is accepted).
 
 ### 5. Run the tests
 ```
@@ -122,7 +129,8 @@ Priotask/
     │   ├── api/              # Phase 4 REST API (Flask)
     │   │   ├── app.py        # create_app(): wires DB/managers/services, registers blueprints, CORS
     │   │   ├── auth.py       # require_auth decorator (Bearer token -> g.user_id)
-    │   │   ├── user_routes.py        # POST /users, /auth/login, /auth/logout
+    │   │   ├── user_routes.py        # POST /users, /auth/login, /auth/logout, GET|PUT /users/me,
+    │   │   │                         # POST /users/me/password (Phase 13)
     │   │   ├── task_routes.py        # CRUD for /tasks (+ /complete, /log-hours, Phase 7)
     │   │   ├── plan_routes.py        # GET /plan/today (Phase 3), GET /plan/week (Phase 9)
     │   │   └── prioritizer_routes.py # POST /prioritizer/train (PrioritizerTrainer, Phase 6)
@@ -533,27 +541,44 @@ each time. This phase lets a task declare a recurrence rule so it regenerates it
   date), and a small recurring-task indicator in the task list so it's visually distinct from a
   one-off task.
 
-### Phase 13 — Top-level navigation & account settings
-Phases 8-10 and 12 each add their own chunk of UI (editing/filtering, a week view, training
-status, recurring-task controls) on top of the current single screen
-(`app-section`'s `.board` of `tasks-section` + `plan-section`) - that stops scaling once all of
-them exist at once. This phase turns the client into a small set of focused windows behind a
-top-level nav, instead of one ever-growing page:
-- A top nav bar (`index.html`/`app.js`) listing one entry per window, switched client-side with no
-  page reload - the same `.hidden`-toggling pattern `Views.showAuthenticated`/`showAnonymous`
-  already use for `auth-section`/`app-section`, just with more than two panes:
-  - **Tasks** - the task list, editing, sorting/filtering/categories (Phase 8).
-  - **Timetable** - today's plan and the week view (Phase 9); the today/week toggle from that
-    phase lives here instead of nested inside a single `plan-section`.
-  - **Prioritizer** - training status and retrain controls (Phase 10).
-  - **Account** - new (see below).
+### Phase 13 — Top-level navigation & account settings (done)
+Phases 8-10 each added their own chunk of UI (editing/filtering, a week view, training status) on
+top of what used to be a single screen (`app-section`'s `.board` of `tasks-section` +
+`plan-section`) - that stopped scaling once all of them existed at once. This phase turned the
+client into a small set of focused windows behind a top-level nav, instead of one ever-growing
+page:
+- A top nav bar (`#app-nav` in `index.html`, wired in `app.js`) listing one entry per window,
+  switched client-side with no page reload via `Views.showWindow` - the same `.hidden`-toggling
+  pattern `Views.showAuthenticated`/`showAnonymous` already used for `auth-section`/`app-section`,
+  just generalized to more than two panes (`.app-window` sections, one nav `.nav-link` per
+  `data-window` id):
+  - **Tasks** (`#tasks-window`) - the task list, editing, sorting/filtering/categories (Phase 8).
+  - **Timetable** (`#timetable-window`) - today's plan and the week view (Phase 9); the
+    today/week toggle from that phase lives here, nested inside `plan-section`.
+  - **Prioritizer** (`#prioritizer-window`) - training status and retrain controls (Phase 10),
+    pulled out of `plan-section` into its own window with a short explanation of what the model
+    does, instead of being squeezed in below the week-plan form.
+  - **Account** (`#account-window`) - new, see below.
+  Logging in (`Views.showAuthenticated`) always resets to the same window - **Timetable**, not
+  Tasks - so a returning user lands straight on "what should I work on today/this week" instead of
+  the raw task list, and never on whatever tab they happened to leave open in a previous session.
 - **Account window**: view username/email, change password, and update email (log out already
-  exists). This needs server support that doesn't exist yet - `UserDAO`/`UserManager` currently
-  only have `add_user`/`get_user_by_username`/`delete_user`, no update path - so this phase adds
-  `PUT /api/users/me` (email) and `POST /api/users/me/password` (current + new password, reusing
-  `UserManager._hash_password`), both behind `require_auth` and scoped to `g.user_id`.
-- Scope is the navigation shell and the Account window specifically; each other window's internal
-  layout is whatever its own phase above already specs.
+  existed in the header). This needed server support that didn't exist yet - `UserDAO`/
+  `UserManager` previously only had `add_user`/`get_user_by_username`/`delete_user`, no read-by-id
+  or update path - so this phase added `UserDAO.get_user_by_id`/`update_email`/`update_password`,
+  `UserManager.get_user_by_id`/`update_email`/`change_password` (the latter re-verifies the
+  current password via the existing PBKDF2 hash before accepting a new one), and three routes:
+  `GET /api/users/me`, `PUT /api/users/me` (body: `{"email": ...}`), and
+  `POST /api/users/me/password` (body: `{"current_password": ..., "new_password": ...}`, 400 if
+  the current password doesn't match) - all behind `require_auth` and scoped to `g.user_id`.
+  Client-side: `api.js:getMe/updateEmail/changePassword`, `views.js:renderAccount`, and two forms
+  in `app.js` (`#update-email-form`, `#change-password-form`) that refresh the displayed
+  username/email on login and after every successful update.
+
+Verified end to end with a Playwright-driven browser run (register, switch through all four nav
+tabs, update email, change password, confirm the wrong-current-password case is rejected, log out
+and back in with the new password) on top of new server unit/API test coverage
+(`UserManager_test.py`, `Api_test.py`).
 
 ## The TODO List
 This section presents all the tasks that need to be done to complete the project, grouped by the
@@ -607,13 +632,14 @@ roadmap phase that owns them (see above for full descriptions).
 - [ ] Recurrence rule on a task (interval/unit, optional end date) - server schema + storage
 - [ ] Completing a recurring task spawns its next occurrence instead of just marking it done
 - [ ] "Repeats" control on the client task form, plus a recurring-task indicator in the task list
-### Phase 13 — Top-level navigation & account settings
-- [ ] Top nav bar switching between Tasks/Timetable/Prioritizer/Account windows client-side
-- [ ] Move the task list + editing/filtering (Phase 8) behind the Tasks window
-- [ ] Move today's plan + week view (Phase 9) behind the Timetable window
-- [ ] Move training status/retrain controls (Phase 10) behind the Prioritizer window
-- [ ] `PUT /api/users/me` (update email) and `POST /api/users/me/password` (change password)
-- [ ] Account window: view username/email, change password, update email
+### Phase 13 — Top-level navigation & account settings (done)
+- [x] Top nav bar switching between Tasks/Timetable/Prioritizer/Account windows client-side
+- [x] Move the task list + editing/filtering (Phase 8) behind the Tasks window
+- [x] Move today's plan + week view (Phase 9) behind the Timetable window
+- [x] Move training status/retrain controls (Phase 10) behind the Prioritizer window
+- [x] `GET /api/users/me`, `PUT /api/users/me` (update email) and `POST /api/users/me/password`
+  (change password)
+- [x] Account window: view username/email, change password, update email
 ### Done (Phases 1-6)
 - [x] Create the server storage system through a sqlite3 database
 - [x] Create the server prioritizer based on the closed-form spec (`FormulaPrioritizer`)

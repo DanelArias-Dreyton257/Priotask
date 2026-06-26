@@ -86,19 +86,58 @@ button:hover {
     background: #1f56c4;
 }
 
-.board {
+#app-nav {
     display: flex;
-    gap: 1.5rem;
+    gap: 0.4rem;
     margin-top: 1.5rem;
-    flex-wrap: wrap;
+    border-bottom: 1px solid #e5e7eb;
+    padding-bottom: 0.5rem;
 }
 
-#tasks-section, #plan-section {
+.nav-link {
+    background: none;
+    color: #6b7280;
+    padding: 0.5rem 0.9rem;
+    border-radius: 4px 4px 0 0;
+}
+
+.nav-link:hover {
+    background: #e5e7eb;
+}
+
+.nav-link.active {
+    background: #2f6fed;
+    color: white;
+}
+
+.app-window {
+    margin-top: 1rem;
+}
+
+#tasks-section, #plan-section, #prioritizer-section, #account-section {
     flex: 1 1 320px;
     background: white;
     padding: 1rem;
     border-radius: 8px;
     box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
+}
+
+#new-task-section {
+    margin-bottom: 1.5rem;
+}
+
+#account-info {
+    margin-bottom: 1rem;
+}
+
+#account-info p {
+    margin: 0.25rem 0;
+}
+
+.window-hint {
+    color: #6b7280;
+    font-size: 0.9rem;
+    margin-top: -0.5rem;
 }
 
 ul {

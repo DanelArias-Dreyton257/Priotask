@@ -38,22 +38,29 @@
         </section>
 
         <section id="app-section" class="hidden">
-            <section id="new-task-section">
-                <h2>New task</h2>
-                <form id="task-form">
-                    <input type="text" name="name" placeholder="Task name" required>
-                    <input type="date" name="deadline" required>
-                    <input type="number" name="expected_duration_h" placeholder="Effort (hours)" min="0" step="0.5" required>
-                    <input type="number" name="importance" placeholder="Importance (1-10)" min="1" max="10" required>
-                    <select name="task_type" id="new-task-type-select"></select>
-                    <input type="text" name="task_type_new" id="new-task-type-new" class="hidden" placeholder="New type">
-                    <select name="task_subtype" id="new-task-subtype-select"></select>
-                    <input type="text" name="task_subtype_new" id="new-task-subtype-new" class="hidden" placeholder="New sub-type">
-                    <button type="submit">Add task</button>
-                </form>
-            </section>
+            <nav id="app-nav">
+                <button type="button" class="nav-link" data-window="tasks-window">Tasks</button>
+                <button type="button" class="nav-link active" data-window="timetable-window">Timetable</button>
+                <button type="button" class="nav-link" data-window="prioritizer-window">Prioritizer</button>
+                <button type="button" class="nav-link" data-window="account-window">Account</button>
+            </nav>
 
-            <div class="board">
+            <section id="tasks-window" class="app-window hidden">
+                <section id="new-task-section">
+                    <h2>New task</h2>
+                    <form id="task-form">
+                        <input type="text" name="name" placeholder="Task name" required>
+                        <input type="date" name="deadline" required>
+                        <input type="number" name="expected_duration_h" placeholder="Effort (hours)" min="0" step="0.5" required>
+                        <input type="number" name="importance" placeholder="Importance (1-10)" min="1" max="10" required>
+                        <select name="task_type" id="new-task-type-select"></select>
+                        <input type="text" name="task_type_new" id="new-task-type-new" class="hidden" placeholder="New type">
+                        <select name="task_subtype" id="new-task-subtype-select"></select>
+                        <input type="text" name="task_subtype_new" id="new-task-subtype-new" class="hidden" placeholder="New sub-type">
+                        <button type="submit">Add task</button>
+                    </form>
+                </section>
+
                 <section id="tasks-section">
                     <h2>Your tasks</h2>
                     <div class="task-toolbar">
@@ -69,7 +76,9 @@
                     </div>
                     <ul id="task-list"></ul>
                 </section>
+            </section>
 
+            <section id="timetable-window" class="app-window">
                 <section id="plan-section">
                     <h2>Timetable</h2>
                     <div class="plan-tabs">
@@ -94,14 +103,46 @@
                         </form>
                         <div id="week-grid"></div>
                     </div>
+                </section>
+            </section>
 
+            <section id="prioritizer-window" class="app-window hidden">
+                <section id="prioritizer-section">
+                    <h2>Prioritizer</h2>
+                    <p class="window-hint">
+                        Your priority model learns a correction on top of the base formula score from your
+                        completed tasks. Train it once you've completed a few tasks to personalize ranking.
+                    </p>
                     <div id="prioritizer-status-section">
                         <span id="prioritizer-status" class="prioritizer-status">Checking priority model status...</span>
                         <button id="train-button" type="button">Train priority model</button>
                         <button id="reset-model-button" type="button" class="hidden">Reset model</button>
                     </div>
                 </section>
-            </div>
+            </section>
+
+            <section id="account-window" class="app-window hidden">
+                <section id="account-section">
+                    <h2>Account</h2>
+                    <div id="account-info">
+                        <p><strong>Username:</strong> <span id="account-username"></span></p>
+                        <p><strong>Email:</strong> <span id="account-email"></span></p>
+                    </div>
+
+                    <form id="update-email-form">
+                        <h3>Update email</h3>
+                        <input type="email" name="email" placeholder="New email" required>
+                        <button type="submit">Update email</button>
+                    </form>
+
+                    <form id="change-password-form">
+                        <h3>Change password</h3>
+                        <input type="password" name="current_password" placeholder="Current password" required>
+                        <input type="password" name="new_password" placeholder="New password" required>
+                        <button type="submit">Change password</button>
+                    </form>
+                </section>
+            </section>
         </section>
     </main>
 

@@ -11,6 +11,7 @@ export const Views = {
         document.getElementById("app-section").classList.remove("hidden");
         document.getElementById("user-bar").classList.remove("hidden");
         document.getElementById("username-display").textContent = username;
+        Views.showWindow("timetable-window");
     },
 
     showAnonymous() {
@@ -108,6 +109,23 @@ export const Views = {
 
     resetForm(form) {
         form.reset();
+    },
+
+    // Phase 13: switches between the top-level windows (Tasks/Timetable/
+    // Prioritizer/Account) by toggling `.hidden` on `.app-window` sections,
+    // the same pattern used for auth-section/app-section.
+    showWindow(windowId) {
+        for (const link of document.querySelectorAll(".nav-link")) {
+            link.classList.toggle("active", link.dataset.window === windowId);
+        }
+        for (const win of document.querySelectorAll(".app-window")) {
+            win.classList.toggle("hidden", win.id !== windowId);
+        }
+    },
+
+    renderAccount({ username, email }) {
+        document.getElementById("account-username").textContent = username;
+        document.getElementById("account-email").textContent = email;
     },
 
     // Phase 10: surfaces whether the user's PrioritizerNetwork is trained

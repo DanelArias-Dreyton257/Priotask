@@ -38,6 +38,11 @@ async function refreshPrioritizerStatus() {
     Views.renderPrioritizerStatus(status);
 }
 
+async function refreshAccount() {
+    const me = await api.getMe();
+    Views.renderAccount(me);
+}
+
 function distinctValues(field) {
     return [...new Set(allTasks.map((task) => task[field]).filter(Boolean))].sort();
 }
@@ -182,6 +187,7 @@ function enterApp(username) {
     Views.showAuthenticated(username);
     refreshTasksAndPlan().catch(reportEnterAppError);
     refreshPrioritizerStatus().catch(reportEnterAppError);
+    refreshAccount().catch(reportEnterAppError);
 }
 
 function logout() {
@@ -292,6 +298,31 @@ for (const id of ["task-search", "task-type-filter", "task-subtype-filter", "tas
     document.getElementById(id).addEventListener("input", renderTaskList);
     document.getElementById(id).addEventListener("change", renderTaskList);
 }
+
+for (const link of document.querySelectorAll(".nav-link")) {
+    link.addEventListener("click", () => Views.showWindow(link.dataset.window));
+}
+
+document.getElementById("update-email-form").addEventListener("submit", (event) => {
+    event.preventDefault();
+    const form = new FormData(event.target);
+    runOrReportError(async () => {
+        await api.updateEmail(form.get("email"));
+        Views.showMessage("Email updated.");
+        await refreshAccount();
+        Views.resetForm(event.target);
+    });
+});
+
+document.getElementById("change-password-form").addEventListener("submit", (event) => {
+    event.preventDefault();
+    const form = new FormData(event.target);
+    runOrReportError(async () => {
+        await api.changePassword(form.get("current_password"), form.get("new_password"));
+        Views.showMessage("Password changed.");
+        Views.resetForm(event.target);
+    });
+});
 
 // Resume an existing session (token survives page reloads via localStorage).
 const existingToken = TokenStore.getToken();
