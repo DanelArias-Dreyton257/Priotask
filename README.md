@@ -2,7 +2,7 @@
 Priotask helps manage and prioritize tasks for effective time management, allowing users to quickly focus on important tasks and meet deadlines. It streamlines manual workload management.
 
 ## Getting Started
-Everything needed to run Phases 1-10 and 13 locally and try the app end to end.
+Everything needed to run Phases 1-11 and 13 locally and try the app end to end.
 
 ### 1. Set up the environment
 ```
@@ -49,16 +49,20 @@ Open `http://localhost:5500` in a browser:
 3. In the **Tasks** window, add a task with the **New task** form (name, deadline, effort in
    hours, importance 1-10). It shows up under **Your tasks**, and the **Timetable** window's
    "Today's plan" shows the recommended hours to spend on it today (`DailyPlanner`, Phase 3)
-   alongside its priority rank.
+   alongside its priority rank. The **Repeats** dropdown (Phase 11) lets it recur daily/weekly/
+   monthly (with an "every N" interval and an optional end date) — completing a recurring task
+   automatically spawns its next occurrence with the deadline advanced by the rule, instead of
+   just marking it done.
 4. **Done** marks a task complete, **Delete** removes it, **Edit** turns the task into an inline
-   form to change any of its fields, and **Log hours** logs partial progress (subtracting from the
-   task's remaining effort, auto-completing it once none is left); all of these refresh **Today's
-   plan** automatically. The **Refresh plan** button re-fetches the plan with a different hours
-   budget.
+   form to change any of its fields (including its recurrence rule), and **Log hours** logs
+   partial progress (subtracting from the task's remaining effort, auto-completing it once none
+   is left); all of these refresh **Today's plan** automatically. The **Refresh plan** button
+   re-fetches the plan with a different hours budget.
 5. Above the task list: **search by name**, **filter by type/sub-type**, **sort** by priority/
    deadline/type, and a **Show completed** checkbox to reveal done tasks (hidden by default).
-   Overdue tasks are highlighted. Type/sub-type on the task form (and the edit form) are dropdowns
-   of categories you've already used, with a "+ Add new..." option for a new one.
+   Overdue tasks are highlighted, and recurring tasks show a "🔁 repeats ..." badge. Type/sub-type
+   on the task form (and the edit form) are dropdowns of categories you've already used, with a
+   "+ Add new..." option for a new one.
 6. The **Timetable** window has a **Today** / **This week** toggle (Phase 9). "This week" shows a
    7-day grid: each day's planned tasks and hours, a load bar (planned hours vs. that day's
    capacity), and any task deadlines falling on that day even if no hours were scheduled for it
@@ -79,7 +83,7 @@ python -m unittest discover -s server/test -p "*_test.py"
 python -m unittest discover -s client/test -p "*_test.py"
 ```
 These cover the server and the client's app shell, but there's no JS unit test runner yet (Phase
-11). Phase 8's client UI was verified manually with a Playwright-driven browser session against
+12). Phase 8's client UI was verified manually with a Playwright-driven browser session against
 the running app instead — `playwright` is in `environment.yml` for that purpose; run
 `python -m playwright install chromium` once after creating/updating the env if you want to do
 the same.
@@ -142,8 +146,9 @@ Priotask/
     │   │   └── dto/          # Wire-format dataclasses: TaskDTO, UserDTO
     │   ├── remote/           # Client-server link: RemoteFacade, TokenManager (stubs)
     │   └── services/
-    │       ├── TaskManager.py       # Task CRUD + domain<->DTO mapping, completion snapshots
-    │       │                       # and partial-hours logging (Phase 7)
+    │       ├── TaskManager.py       # Task CRUD + domain<->DTO mapping, completion snapshots,
+    │       │                       # partial-hours logging (Phase 7) and recurrence spawning (Phase 11)
+    │       ├── Recurrence.py        # next_deadline(): day/week/month date math (Phase 11)
     │       ├── UserManager.py       # User CRUD + password hashing (done)
     │       ├── AuthService.py       # Bearer token issuing/lookup, in-memory (Phase 4, done)
     │       └── Prioritizer/         # See "The Prioritization Model" below
@@ -380,7 +385,7 @@ User-visible, closed by Phase 10 (Personalization visibility) below:
   is a reasonable first cut but still unvalidated against real usage — showing the formula score
   and the learned-correction score side by side remains optional future work, not done here.
 
-Internal/robustness, tracked under Phase 11 (Hardening & polish):
+Internal/robustness, tracked under Phase 12 (Hardening & polish):
 - `FeatureExtractor`'s five features (`effort_days`, `days_remaining`, `importance`, `urgency`,
   `formula_score`) are fed into the network unnormalized despite spanning very different numeric
   ranges — `urgency`/`formula_score` can grow large (even unbounded near a deadline, see the
@@ -508,7 +513,48 @@ was invisible to the user — closes the user-visible gaps listed under Phase 6 
 - Not done: showing the formula score and the learned-correction score side by side was listed as
   optional and is left for a future phase.
 
-### Phase 11 — Hardening & polish
+### Phase 11 — Recurring (cyclic) tasks (done)
+Previously every task was a one-off: a chore that comes back every week had to be re-created by
+hand each time. This phase lets a task declare a recurrence rule so it regenerates itself instead.
+Renumbered ahead of the (still open) Phase 12 hardening work below, since it's a clear user-facing
+feature with a well-defined scope, rather than diffuse robustness work:
+- **Schema**: `tasks` gained `recurrence_unit` (`NULL`/`"day"`/`"week"`/`"month"`),
+  `recurrence_interval` (positive int, only meaningful once a unit is set) and
+  `recurrence_end_date` (`NULL` or an ISO date past which recurrence stops), as new columns rather
+  than a separate template table - each occurrence is just a normal task row, so Phase 7's
+  completion snapshots (`PrioritizerTrainer`'s training signal) keep working unchanged with no
+  notion of lineage needed. Since the project's only schema path is
+  `CREATE TABLE IF NOT EXISTS` (no migration system), an on-disk `priotask.db` predating this
+  change wouldn't pick up the new columns from that alone - `DB.connect()` now also runs
+  `_migrate_tasks_recurrence_columns()`, which reads `PRAGMA table_info(tasks)` and `ALTER TABLE`s
+  in whatever's missing; a no-op on fresh/`:memory:` databases.
+- **Date math** (`server/src/services/Recurrence.py`, `next_deadline`): advances a deadline by
+  `recurrence_interval` days/weeks/months using stdlib `datetime`/`calendar` only - month
+  arithmetic clamps the day-of-month to the target month's last day (e.g. Jan 31 + 1 month -> Feb
+  28/29) instead of overflowing into the following month.
+- **`TaskManager.mark_done`**: after recording the usual completion snapshot, if the completed
+  task has `recurrence_unit` set, computes the next deadline and spawns a new open task with the
+  same name/effort/importance/type/subtype/recurrence rule via `create_task` - unless that next
+  deadline would fall after `recurrence_end_date`, in which case recurrence simply ends. Since
+  `log_hours` already calls `mark_done` once remaining effort hits zero, completing a recurring
+  task that way spawns the next occurrence too, with no separate hook needed.
+- **API** (`task_routes.py`): `_parse_task_fields` validates `recurrence_unit` against the allowed
+  set, requires a positive `recurrence_interval` once a unit is set, and parses
+  `recurrence_end_date` - same 400-on-bad-input pattern as the existing required fields.
+- **Client**: a "Repeats" control (none/daily/weekly/monthly + "every N" interval + optional end
+  date) on both the new-task form and the edit-in-place form (`Views.wireRecurrenceField`/
+  `readRecurrenceField`), and a "🔁 repeats ..." badge on a recurring task's display row so it's
+  visually distinct from a one-off task.
+
+Verified with new unit tests (`TaskManager_test.py`: spawn-on-complete for each unit including a
+month-end edge case, recurrence stopping at `recurrence_end_date`, spawn-via-`log_hours`;
+`Api_test.py`: create-with-recurrence, invalid-unit rejection, complete-spawns-next-occurrence over
+HTTP) plus a manual end-to-end check (register, create a weekly task via the API, complete it,
+confirm the listed tasks now include a second open occurrence with the deadline advanced by 7
+days) and confirming the `ALTER TABLE` migration runs cleanly against a copy of a real pre-existing
+`priotask.db`.
+
+### Phase 12 — Hardening & polish
 - JS unit tests for `views.js`/`app.js`/`api.js` — today only `client/test/Client_test.py` exists
   (a smoke test that the page and static assets are served), so the JS modules are untested beyond
   manual browser checks.
@@ -528,23 +574,6 @@ was invisible to the user — closes the user-visible gaps listed under Phase 6 
     `ModelStore.save`.
   - Invalidate/refresh `PrioritizerNetwork._cache` correctly if the server ever runs as more than
     one process/worker.
-
-### Phase 12 — Recurring (cyclic) tasks
-Today every task is a one-off: a chore that comes back every week has to be re-created by hand
-each time. This phase lets a task declare a recurrence rule so it regenerates itself instead:
-- Server: a recurrence rule on the task (e.g. `recurrence_interval` + `recurrence_unit` -
-  daily/weekly/monthly - plus an optional end date), stored either as new columns on `tasks` or a
-  small `task_recurrences` table keyed by a template task. When a recurring task is completed
-  (`TaskManager.mark_done`/`log_hours`), instead of just marking it done, the next occurrence is
-  created automatically with the deadline advanced by the rule's interval and the same effort/
-  importance/type/subtype - so the board always has exactly one open instance of a recurring task,
-  never zero and never a pile-up of duplicates.
-- Completion history for a recurring task's past occurrences is preserved (each instance still has
-  its own `task_id`/`completed_at`), so `PrioritizerTrainer`'s completion snapshots (Phase 7) keep
-  working unchanged - a recurring task is just a task that happens to spawn its successor.
-- Client: a "Repeats" control on the task form (none / daily / weekly / monthly, optional end
-  date), and a small recurring-task indicator in the task list so it's visually distinct from a
-  one-off task.
 
 ### Phase 13 — Top-level navigation & account settings (done)
 Phases 8-10 each added their own chunk of UI (editing/filtering, a week view, training status) on
@@ -647,7 +676,11 @@ roadmap phase that owns them (see above for full descriptions).
 - [x] Manual retrain action in the client (existing "Train priority model" button); auto-triggered
   retrain after N completions left as future work, see Phase 10 notes above
 - [ ] Optional: show formula score vs. learned-correction score side by side
-### Phase 11 — Hardening & polish
+### Phase 11 — Recurring (cyclic) tasks (done)
+- [x] Recurrence rule on a task (interval/unit, optional end date) - server schema + storage
+- [x] Completing a recurring task spawns its next occurrence instead of just marking it done
+- [x] "Repeats" control on the client task form, plus a recurring-task indicator in the task list
+### Phase 12 — Hardening & polish
 - [ ] JS unit tests for `views.js`/`app.js`/`api.js`
 - [ ] Create the documentation for the server
 - [ ] Create the documentation for the client
@@ -661,10 +694,6 @@ roadmap phase that owns them (see above for full descriptions).
   changes fall back to formula-only scoring instead of crashing on load
 - [ ] Guard against concurrent `POST /api/prioritizer/train` calls for the same user
 - [ ] Make `PrioritizerNetwork._cache` safe for a multi-process/worker deployment
-### Phase 12 — Recurring (cyclic) tasks
-- [ ] Recurrence rule on a task (interval/unit, optional end date) - server schema + storage
-- [ ] Completing a recurring task spawns its next occurrence instead of just marking it done
-- [ ] "Repeats" control on the client task form, plus a recurring-task indicator in the task list
 ### Phase 13 — Top-level navigation & account settings (done)
 - [x] Top nav bar switching between Tasks/Timetable/Prioritizer/Account windows client-side
 - [x] Move the task list + editing/filtering (Phase 8) behind the Tasks window
@@ -698,7 +727,7 @@ roadmap phase that owns them (see above for full descriptions).
 - [x] Create the tests for the server (Prioritizer, DailyPlanner, TaskManager, UserManager,
   Api — `server/test/`)
 - [x] Create the tests for the client (`client/test/Client_test.py`: page + static assets served;
-  no JS unit tests yet, see Phase 11)
+  no JS unit tests yet, see Phase 12)
 - [x] Create a script that launches the server and the client together (`scripts/run.sh`, one
   command instead of two separate `python -m server.src.Server` /
   `python -m client.src.Client` terminals)
