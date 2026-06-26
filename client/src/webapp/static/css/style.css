@@ -189,6 +189,11 @@ ul {
     color: #6b7280;
 }
 
+.recurrence-badge {
+    font-size: 0.8rem;
+    color: #2f6fed;
+}
+
 .task-actions {
     display: grid;
     grid-template-columns: 1fr 1fr;

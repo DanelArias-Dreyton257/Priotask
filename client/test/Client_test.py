@@ -29,6 +29,14 @@ class ClientTest(unittest.TestCase):
         ):
             self.assertIn(element_id, body, f"{element_id} should be in the app shell")
 
+    def test_index_includes_phase_11_recurrence_controls(self):
+        response = self.client.get("/")
+        body = response.get_data(as_text=True)
+        for element_id in (
+            "new-task-recurrence-select", "new-task-recurrence-interval", "new-task-recurrence-end",
+        ):
+            self.assertIn(element_id, body, f"{element_id} should be in the app shell")
+
     def test_static_js_modules_are_served(self):
         for filename in ("api.js", "session.js", "views.js", "app.js"):
             response = self.client.get(f"/static/js/{filename}")

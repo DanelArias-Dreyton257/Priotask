@@ -241,8 +241,18 @@ document.getElementById("task-form").addEventListener("submit", (event) => {
                 document.getElementById("new-task-subtype-select"),
                 document.getElementById("new-task-subtype-new"),
             ),
+            ...Views.readRecurrenceField(
+                document.getElementById("new-task-recurrence-select"),
+                document.getElementById("new-task-recurrence-interval"),
+                document.getElementById("new-task-recurrence-end"),
+            ),
         });
         Views.resetForm(event.target);
+        Views.wireRecurrenceField(
+            document.getElementById("new-task-recurrence-select"),
+            document.getElementById("new-task-recurrence-interval"),
+            document.getElementById("new-task-recurrence-end"),
+        );
         await refreshTasksAndPlan();
     });
 });
@@ -323,6 +333,12 @@ document.getElementById("change-password-form").addEventListener("submit", (even
         Views.resetForm(event.target);
     });
 });
+
+Views.wireRecurrenceField(
+    document.getElementById("new-task-recurrence-select"),
+    document.getElementById("new-task-recurrence-interval"),
+    document.getElementById("new-task-recurrence-end"),
+);
 
 // Resume an existing session (token survives page reloads via localStorage).
 const existingToken = TokenStore.getToken();

@@ -57,6 +57,14 @@
                         <input type="text" name="task_type_new" id="new-task-type-new" class="hidden" placeholder="New type">
                         <select name="task_subtype" id="new-task-subtype-select"></select>
                         <input type="text" name="task_subtype_new" id="new-task-subtype-new" class="hidden" placeholder="New sub-type">
+                        <select name="recurrence_unit" id="new-task-recurrence-select">
+                            <option value="">Repeats: none</option>
+                            <option value="day">Daily</option>
+                            <option value="week">Weekly</option>
+                            <option value="month">Monthly</option>
+                        </select>
+                        <input type="number" name="recurrence_interval" id="new-task-recurrence-interval" class="hidden" min="1" step="1" value="1" placeholder="Every N">
+                        <input type="date" name="recurrence_end_date" id="new-task-recurrence-end" class="hidden" placeholder="Ends on">
                         <button type="submit">Add task</button>
                     </form>
                 </section>

@@ -58,6 +58,33 @@ export const Views = {
         return selectEl.value === NEW_CATEGORY_VALUE ? newInputEl.value.trim() : selectEl.value;
     },
 
+    // Phase 11: wires a "Repeats" select (none/day/week/month) plus an
+    // interval number input and an optional end-date input, showing the
+    // latter two only once a recurrence unit is actually chosen. Used by
+    // both the new-task form and the edit-in-place form.
+    wireRecurrenceField(selectEl, intervalEl, endEl, task = {}) {
+        selectEl.value = task.recurrence_unit || "";
+        intervalEl.value = task.recurrence_interval || 1;
+        endEl.value = task.recurrence_end_date ? task.recurrence_end_date.slice(0, 10) : "";
+
+        const sync = () => {
+            const repeats = selectEl.value !== "";
+            intervalEl.classList.toggle("hidden", !repeats);
+            endEl.classList.toggle("hidden", !repeats);
+        };
+        sync();
+        selectEl.onchange = sync;
+    },
+
+    readRecurrenceField(selectEl, intervalEl, endEl) {
+        const recurrenceUnit = selectEl.value || null;
+        return {
+            recurrence_unit: recurrenceUnit,
+            recurrence_interval: recurrenceUnit ? Number(intervalEl.value) || 1 : null,
+            recurrence_end_date: recurrenceUnit && endEl.value ? endEl.value : null,
+        };
+    },
+
     // Populates a plain filter <select> ("All ..." + the distinct values seen).
     populateFilterSelect(selectEl, values, allLabel) {
         const previous = selectEl.value;
@@ -183,6 +210,7 @@ function buildDisplayItem(task, { onComplete, onDelete, onLogHours, onEdit }) {
         <span>effort: ${task.expected_duration_h}h</span>
         <span>importance: ${task.importance}</span>
         ${task.task_type ? `<span class="category">${escapeHtml(task.task_type)}${task.task_subtype ? " / " + escapeHtml(task.task_subtype) : ""}</span>` : ""}
+        ${task.recurrence_unit ? `<span class="recurrence-badge">\u{1F501} repeats every ${task.recurrence_interval > 1 ? task.recurrence_interval + " " : ""}${task.recurrence_unit}${task.recurrence_interval > 1 ? "s" : ""}</span>` : ""}
     `;
     item.appendChild(info);
 
@@ -250,6 +278,14 @@ function buildEditItem(task, categories, onSaveEdit, onCancelEdit) {
         <input type="text" name="task_type_new" class="hidden" placeholder="New type">
         <select name="task_subtype"></select>
         <input type="text" name="task_subtype_new" class="hidden" placeholder="New sub-type">
+        <select name="recurrence_unit">
+            <option value="">Repeats: none</option>
+            <option value="day">Daily</option>
+            <option value="week">Weekly</option>
+            <option value="month">Monthly</option>
+        </select>
+        <input type="number" name="recurrence_interval" class="hidden" min="1" step="1" placeholder="Every N">
+        <input type="date" name="recurrence_end_date" class="hidden" placeholder="Ends on">
         <div class="task-buttons-row">
             <button type="submit">Save</button>
             <button type="button" class="cancel-edit">Cancel</button>
@@ -268,6 +304,12 @@ function buildEditItem(task, categories, onSaveEdit, onCancelEdit) {
         categories.subtypes,
         task.task_subtype,
     );
+    Views.wireRecurrenceField(
+        form.querySelector('select[name="recurrence_unit"]'),
+        form.querySelector('input[name="recurrence_interval"]'),
+        form.querySelector('input[name="recurrence_end_date"]'),
+        task,
+    );
 
     form.addEventListener("submit", (event) => {
         event.preventDefault();
@@ -284,6 +326,11 @@ function buildEditItem(task, categories, onSaveEdit, onCancelEdit) {
             task_subtype: Views.readCategoryField(
                 form.querySelector('select[name="task_subtype"]'),
                 form.querySelector('input[name="task_subtype_new"]'),
+            ),
+            ...Views.readRecurrenceField(
+                form.querySelector('select[name="recurrence_unit"]'),
+                form.querySelector('input[name="recurrence_interval"]'),
+                form.querySelector('input[name="recurrence_end_date"]'),
             ),
         });
     });
