@@ -269,6 +269,74 @@ class ApiTest(unittest.TestCase):
         response = self.client.get("/api/tasks", headers=self._auth_headers(token))
         self.assertEqual(response.status_code, 401)
 
+    def test_get_me_returns_current_user_without_password(self):
+        token = self._register_and_login()
+
+        response = self.client.get("/api/users/me", headers=self._auth_headers(token))
+        self.assertEqual(response.status_code, 200)
+        body = response.get_json()
+        self.assertEqual(body["username"], "alice")
+        self.assertEqual(body["email"], "alice@example.com")
+        self.assertNotIn("password_hash", body)
+
+    def test_get_me_requires_auth(self):
+        self.assertEqual(self.client.get("/api/users/me").status_code, 401)
+
+    def test_update_me_changes_email(self):
+        token = self._register_and_login()
+
+        response = self.client.put(
+            "/api/users/me", json={"email": "new@example.com"}, headers=self._auth_headers(token),
+        )
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.get_json()["email"], "new@example.com")
+
+        me = self.client.get("/api/users/me", headers=self._auth_headers(token))
+        self.assertEqual(me.get_json()["email"], "new@example.com")
+
+    def test_update_me_rejects_missing_email(self):
+        token = self._register_and_login()
+        response = self.client.put("/api/users/me", json={}, headers=self._auth_headers(token))
+        self.assertEqual(response.status_code, 400)
+
+    def test_change_password_with_correct_current_password(self):
+        token = self._register_and_login()
+
+        response = self.client.post(
+            "/api/users/me/password",
+            json={"current_password": "s3cret", "new_password": "new-s3cret"},
+            headers=self._auth_headers(token),
+        )
+        self.assertEqual(response.status_code, 204)
+
+        relogin = self.client.post("/api/auth/login", json={"username": "alice", "password": "new-s3cret"})
+        self.assertEqual(relogin.status_code, 200)
+
+    def test_change_password_with_wrong_current_password(self):
+        token = self._register_and_login()
+
+        response = self.client.post(
+            "/api/users/me/password",
+            json={"current_password": "wrong", "new_password": "new-s3cret"},
+            headers=self._auth_headers(token),
+        )
+        self.assertEqual(response.status_code, 400)
+
+    def test_change_password_rejects_missing_fields(self):
+        token = self._register_and_login()
+        response = self.client.post(
+            "/api/users/me/password", json={"current_password": "s3cret"}, headers=self._auth_headers(token),
+        )
+        self.assertEqual(response.status_code, 400)
+
+    def test_account_routes_require_auth(self):
+        self.assertEqual(self.client.put("/api/users/me", json={"email": "x@x.com"}).status_code, 401)
+        self.assertEqual(
+            self.client.post("/api/users/me/password", json={"current_password": "a", "new_password": "b"})
+            .status_code,
+            401,
+        )
+
 
 if __name__ == "__main__":
     unittest.main()

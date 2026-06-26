@@ -1,6 +1,6 @@
 from dataclasses import asdict
 
-from flask import Blueprint, current_app, jsonify, request
+from flask import Blueprint, current_app, g, jsonify, request
 
 from server.src.api.auth import require_auth
 
@@ -41,4 +41,39 @@ def login():
 def logout():
     token = request.headers["Authorization"][len("Bearer "):]
     current_app.auth_service.logout(token)
+    return "", 204
+
+
+@user_bp.get("/users/me")
+@require_auth
+def get_me():
+    user = current_app.user_manager.get_user_by_id(g.user_id)
+    return jsonify(asdict(user))
+
+
+@user_bp.put("/users/me")
+@require_auth
+def update_me():
+    body = request.get_json(silent=True) or {}
+    try:
+        email = body["email"]
+    except KeyError as exc:
+        return jsonify(error=f"missing field: {exc.args[0]}"), 400
+
+    user = current_app.user_manager.update_email(g.user_id, email)
+    return jsonify(asdict(user))
+
+
+@user_bp.post("/users/me/password")
+@require_auth
+def change_password():
+    body = request.get_json(silent=True) or {}
+    try:
+        current_password, new_password = body["current_password"], body["new_password"]
+    except KeyError as exc:
+        return jsonify(error=f"missing field: {exc.args[0]}"), 400
+
+    changed = current_app.user_manager.change_password(g.user_id, current_password, new_password)
+    if not changed:
+        return jsonify(error="current password is incorrect"), 400
     return "", 204

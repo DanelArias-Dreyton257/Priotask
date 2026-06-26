@@ -45,12 +45,33 @@ class UserManager:
         row = self.dao.get_user(username)
         return self._domain_to_dto(self._row_to_domain(row)) if row else None
 
+    def get_user_by_id(self, user_id: int) -> Optional[UserDTO]:
+        row = self.dao.get_user_by_id(user_id)
+        return self._domain_to_dto(self._row_to_domain(row)) if row else None
+
     def verify_password(self, username: str, password: str) -> bool:
         row = self.dao.get_user(username)
         if row is None:
             return False
         digest, _ = self._hash_password(password, row["password_salt"])
         return hmac.compare_digest(digest, row["password_hash"])
+
+    def update_email(self, user_id: int, email: str) -> Optional[UserDTO]:
+        self.dao.update_email(user_id, email)
+        return self.get_user_by_id(user_id)
+
+    def change_password(self, user_id: int, current_password: str, new_password: str) -> bool:
+        """Verifies `current_password` against the stored hash before replacing it; returns
+        False (no-op) if the user is unknown or the current password doesn't match."""
+        row = self.dao.get_user_by_id(user_id)
+        if row is None:
+            return False
+        digest, _ = self._hash_password(current_password, row["password_salt"])
+        if not hmac.compare_digest(digest, row["password_hash"]):
+            return False
+        password_hash, password_salt = self._hash_password(new_password)
+        self.dao.update_password(user_id, password_hash, password_salt)
+        return True
 
     def delete_user(self, username: str) -> None:
         self.dao.delete_user(username)
