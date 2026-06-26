@@ -285,6 +285,11 @@ This is where "the score" becomes the feature the user actually sees, implemente
 - Output per task (`PlanEntry`): `rank`, `task`, `score` (`v_i`), `recommended_hours_today`.
   Diagnostics already built in Phase 1 (`mean`, `std`, `V/4`, `V/8`) are meant to help calibrate
   `available_hours_today` itself.
+- Client (small Phase 14-adjacent fix): every `PlanEntry` already carries its task's `deadline`
+  via `entry.task`, so `Views.renderPlan` flags any entry whose deadline falls on today
+  (`isDueToday`) with a `.plan-item.due-today` style and a "Due today" badge - the week view
+  already had a "Due: ..." marker per day (Phase 9); the Today tab had no equivalent until now.
+  No server change needed; the data was already in the response.
 
 ### Phase 4 — Server API (done)
 A Flask app (`server/src/api/app.py`, `create_app`) exposing the persistence and prioritization
@@ -580,6 +585,34 @@ tabs, update email, change password, confirm the wrong-current-password case is 
 and back in with the new password) on top of new server unit/API test coverage
 (`UserManager_test.py`, `Api_test.py`).
 
+### Phase 14 — Calendar-aligned week & month view
+The Phase 9 week grid (`#week-grid`) used `grid-template-columns: repeat(auto-fit, minmax(7.5rem,
+1fr))`, which picks its own column count from the available width - on anything narrower than
+~7 cards-wide it silently wrapped onto a second row, breaking the "this is one week, read left to
+right" layout. Fixed as part of this phase: `repeat(7, minmax(6rem, 1fr))` plus `overflow-x: auto`
+forces exactly one row of 7 always, falling back to horizontal scroll instead of wrapping on
+narrow viewports (verified at both 1280px and 480px with a Playwright check).
+
+Still open, and the reason this is its own phase rather than a one-line fix: today the grid always
+puts "today" in the first column regardless of which weekday it actually is (`plan_week`'s `days`
+window starts at today and counts forward, so day 0 is whatever weekday "today" happens to be).
+That's fine for a single rolling week, but doesn't generalize to a real calendar:
+- **Weekday-aligned columns**: render the grid under fixed Mon-Sun column headers and offset the
+  first row so "today" lands in its real weekday column instead of always column 1 - e.g. if today
+  is Wednesday, Monday/Tuesday of the current calendar week render as empty "past" placeholders
+  (no data - `DailyPlanner.plan_week` only ever looks forward from today, and shouldn't start
+  recommending hours for days that have already happened) and the row continues into next week
+  once it runs past Sunday. This needs no server change - `plan_week`'s response already carries
+  an explicit `date` per entry; only `Views.renderWeekPlan`/`buildDayCard` need to compute today's
+  weekday offset and insert the leading blanks.
+- **Month view**: once the grid is weekday-aligned, wrapping the same day-cards into multiple
+  week-rows (5-6 rows x 7 columns) turns it into a month grid for free - same data shape, same
+  card component, just grouped by calendar week instead of rendered as one row. Needs requesting
+  more days from `GET /api/plan/week` (already bounded to `[1, 31]`, enough for a full month) and
+  a "This month" tab alongside Today/This week in `plan-tabs`.
+- First-day-of-week is assumed Monday (ISO) for both; a configurable Sunday-start option is left
+  for if it's ever actually requested, not built speculatively now.
+
 ## The TODO List
 This section presents all the tasks that need to be done to complete the project, grouped by the
 roadmap phase that owns them (see above for full descriptions).
@@ -640,6 +673,14 @@ roadmap phase that owns them (see above for full descriptions).
 - [x] `GET /api/users/me`, `PUT /api/users/me` (update email) and `POST /api/users/me/password`
   (change password)
 - [x] Account window: view username/email, change password, update email
+### Phase 14 — Calendar-aligned week & month view
+- [x] Force `#week-grid` to a fixed single row of 7 (was wrapping onto multiple rows on narrower
+  viewports via `auto-fit`); horizontal scroll as the narrow-viewport fallback instead of wrapping
+- [ ] Weekday-aligned columns: fixed Mon-Sun headers, "today" lands in its real weekday column
+  (leading blank "past" placeholders for earlier days in the current calendar week) instead of
+  always being column 1
+- [ ] "This month" tab: same day-card grid grouped into 5-6 week-rows instead of one row, reusing
+  `GET /api/plan/week` with a larger `days` value
 ### Done (Phases 1-6)
 - [x] Create the server storage system through a sqlite3 database
 - [x] Create the server prioritizer based on the closed-form spec (`FormulaPrioritizer`)

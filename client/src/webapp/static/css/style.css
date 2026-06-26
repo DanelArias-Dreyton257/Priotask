@@ -166,6 +166,18 @@ ul {
     padding-left: 0.5rem;
 }
 
+.plan-item.due-today {
+    background: #fff8e1;
+    border-left: 3px solid #d9a02f;
+    padding-left: 0.5rem;
+}
+
+.due-today-badge {
+    font-size: 0.75rem;
+    color: #9b6a00;
+    font-weight: 600;
+}
+
 .task-info, .plan-item {
     display: flex;
     flex-direction: column;
@@ -290,8 +302,9 @@ ul {
 
 #week-grid {
     display: grid;
-    grid-template-columns: repeat(auto-fit, minmax(7.5rem, 1fr));
+    grid-template-columns: repeat(7, minmax(6rem, 1fr));
     gap: 0.5rem;
+    overflow-x: auto;
 }
 
 .day-card {

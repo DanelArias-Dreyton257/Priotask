@@ -97,11 +97,12 @@ export const Views = {
 
         for (const entry of entries) {
             const item = document.createElement("li");
-            item.className = "plan-item";
+            item.className = "plan-item" + (isDueToday(entry.task) ? " due-today" : "");
             item.innerHTML = `
                 <strong>#${entry.rank} ${escapeHtml(entry.task.name)}</strong>
                 <span>${entry.recommended_hours_today.toFixed(1)}h today</span>
                 <span class="score">score ${entry.score.toFixed(2)}</span>
+                ${isDueToday(entry.task) ? "<span class='due-today-badge'>Due today</span>" : ""}
             `;
             list.appendChild(item);
         }
@@ -163,6 +164,11 @@ function isOverdue(task) {
     if (task.done) return false;
     const today = new Date().toISOString().slice(0, 10);
     return task.deadline.slice(0, 10) <= today;
+}
+
+function isDueToday(task) {
+    const today = new Date().toISOString().slice(0, 10);
+    return task.deadline.slice(0, 10) === today;
 }
 
 function buildDisplayItem(task, { onComplete, onDelete, onLogHours, onEdit }) {
