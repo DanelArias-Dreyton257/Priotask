@@ -64,6 +64,12 @@ def main():
              expected_duration_h=4.0, importance=3, task_type="personal", task_subtype="event"),
         dict(name="Read 'Atomic Habits'", deadline=now + timedelta(days=30),
              expected_duration_h=6.0, importance=2, task_type="personal", task_subtype="reading"),
+        # Recurring (Phase 11): completing this spawns its next occurrence a
+        # week later instead of just marking it done, demoing the "Repeats"
+        # control/badge without needing to create one by hand.
+        dict(name="Weekly team sync", deadline=now + timedelta(days=4),
+             expected_duration_h=1.0, importance=4, task_type="work", task_subtype="meeting",
+             recurrence_unit="week", recurrence_interval=1),
     ]
     for fields in open_tasks:
         tasks.create_task(user_id=user.user_id, **fields)
