@@ -23,6 +23,10 @@ class ModelStore(ABC):
         raise NotImplementedError
 
     @abstractmethod
+    def get_updated_at(self, user_id: int, model_type: str) -> Optional[str]:
+        raise NotImplementedError
+
+    @abstractmethod
     def delete(self, user_id: int, model_type: str) -> None:
         raise NotImplementedError
 
@@ -39,6 +43,9 @@ class SqliteModelStore(ModelStore):
     def load(self, user_id: int, model_type: str) -> Optional[bytes]:
         row = self.dao.get(user_id, model_type)
         return bytes(row["payload"]) if row else None
+
+    def get_updated_at(self, user_id: int, model_type: str) -> Optional[str]:
+        return self.dao.get_updated_at(user_id, model_type)
 
     def delete(self, user_id: int, model_type: str) -> None:
         self.dao.delete(user_id, model_type)

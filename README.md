@@ -632,9 +632,14 @@ population, `renderPlan`/`renderWeekPlan`, `ApiClient` error handling and URL co
 the weekday-aligned week-view layout. Module-level docstrings added to all server services and
 client JS modules. `scripts/install.sh`, `update.sh`, and `uninstall.sh` added.
 
-One item remains open within Phase 12:
-- `PrioritizerNetwork._cache` safety for multi-process/worker deployments — still a per-process
-  in-memory dict; fine for the current single-process dev server.
+- **`_cache` multi-process coherence** (done): `_cache` used to be a plain `Dict[int, keras.Model]`
+  that was never invalidated when another process trained and saved newer weights. Fixed by storing
+  `(model, updated_at_str)` pairs instead of bare models and adding a cheap `get_updated_at` query
+  (`ModelWeightsDAO` → `ModelStore`) at the top of `_model_for_user`. On every call the cached
+  timestamp is compared against the DB; a mismatch evicts the stale entry and reloads the payload —
+  so a model trained by one gunicorn worker is visible to all others on the next request, with no
+  process restart needed. `fit()` captures the same timestamp it passes to `model_store.save` so
+  the producing process doesn't immediately re-fetch its own freshly-written weights.
 
 ### Phase 13 — Top-level navigation & account settings (done)
 Phases 8-10 each added their own chunk of UI (editing/filtering, a week view, training status) on
@@ -805,7 +810,9 @@ roadmap phase that owns them (see above for full descriptions).
   accepted)
 - [x] Guard against concurrent `POST /api/prioritizer/train` calls for the same user (per-user
   `threading.Lock` in `_train_locks`, protected by `_lock_registry` mutex)
-- [ ] Make `PrioritizerNetwork._cache` safe for a multi-process/worker deployment
+- [x] Make `PrioritizerNetwork._cache` safe for a multi-process/worker deployment (timestamp-based
+  staleness check: `_model_for_user` queries `updated_at` from the DB on every call and evicts the
+  in-process cache entry when another worker has saved a newer version)
 ### Phase 13 — Top-level navigation & account settings (done)
 - [x] Top nav bar switching between Tasks/Timetable/Prioritizer/Account windows client-side
 - [x] Move the task list + editing/filtering (Phase 8) behind the Tasks window

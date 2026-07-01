@@ -48,7 +48,11 @@ class PrioritizerNetwork(PrioritizerModel):
     def __init__(self, model_store: Optional[ModelStore] = None):
         self.model_store = model_store or SqliteModelStore()
         self.extractor = FeatureExtractor()
-        self._cache: Dict[int, keras.Model] = {}
+        # Each entry is (model, updated_at_str) where updated_at_str matches
+        # the value stored in model_weights.updated_at.  _model_for_user
+        # re-checks the DB timestamp on every call so a model trained by
+        # another worker/process is picked up without a restart.
+        self._cache: Dict[int, Tuple[keras.Model, str]] = {}
         self._train_locks: Dict[int, threading.Lock] = {}
         self._lock_registry = threading.Lock()
 
@@ -88,15 +92,25 @@ class PrioritizerNetwork(PrioritizerModel):
         return True
 
     def _model_for_user(self, user_id: int) -> Optional[keras.Model]:
-        if user_id in self._cache:
-            return self._cache[user_id]
+        # One cheap timestamp query lets us detect when another process has
+        # saved a newer model, without loading the full payload on every call.
+        db_updated_at = self.model_store.get_updated_at(user_id, self.MODEL_TYPE)
+        cached = self._cache.get(user_id)
+        if cached is not None:
+            cached_model, cached_updated_at = cached
+            if cached_updated_at == db_updated_at:
+                return cached_model
+            # Another process saved a newer version (or forgot the model); evict.
+            del self._cache[user_id]
+        if db_updated_at is None:
+            return None
         payload = self.model_store.load(user_id, self.MODEL_TYPE)
         if payload is None:
             return None
         model = self._build_model()
         if not self._deserialize(model, payload):
             return None
-        self._cache[user_id] = model
+        self._cache[user_id] = (model, db_updated_at)
         return model
 
     def _get_train_lock(self, user_id: int) -> threading.Lock:
@@ -172,8 +186,9 @@ class PrioritizerNetwork(PrioritizerModel):
             else:
                 model.fit(x, y, epochs=epochs, verbose=0)
 
-            self._cache[user_id] = model
-            self.model_store.save(user_id, self.MODEL_TYPE, self._serialize(model), datetime.now())
+            saved_at = datetime.now()
+            self.model_store.save(user_id, self.MODEL_TYPE, self._serialize(model), saved_at)
+            self._cache[user_id] = (model, saved_at.isoformat())
 
     def forget(self, user_id: int) -> None:
         """Discards a user's trained model, reverting score() to FormulaPrioritizer."""

@@ -20,6 +20,13 @@ class ModelWeightsDAO(object):
         query = "SELECT * FROM model_weights WHERE user_id = ? AND model_type = ?"
         return self.db.execute(query, (user_id, model_type)).fetchone()
 
+    def get_updated_at(self, user_id: int, model_type: str) -> Optional[str]:
+        row = self.db.execute(
+            "SELECT updated_at FROM model_weights WHERE user_id = ? AND model_type = ?",
+            (user_id, model_type),
+        ).fetchone()
+        return row["updated_at"] if row else None
+
     def delete(self, user_id: int, model_type: str) -> None:
         self.db.execute(
             "DELETE FROM model_weights WHERE user_id = ? AND model_type = ?",

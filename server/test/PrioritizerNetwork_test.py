@@ -358,5 +358,56 @@ class PrioritizerNetworkConcurrencyTest(unittest.TestCase):
         self.assertIsNotNone(self.store.load(self.user_id, PrioritizerNetwork.MODEL_TYPE))
 
 
+class PrioritizerNetworkCacheCoherenceTest(unittest.TestCase):
+    """Verifies that _cache is invalidated when another process (simulated by a
+    separate PrioritizerNetwork instance sharing the same ModelStore) trains or
+    forgets a model, so score() never serves weights that are stale relative to
+    the DB."""
+
+    def setUp(self):
+        self.db = DB(":memory:").connect()
+        users = UserManager(UserDAO(self.db))
+        self.user_id = users.create_user("alice", "s3cret", "alice@example.com").user_id
+        self.store = SqliteModelStore(ModelWeightsDAO(self.db))
+
+    def tearDown(self):
+        self.db.close()
+
+    def test_score_picks_up_weights_trained_by_another_instance(self):
+        chosen = make_task("chosen", days_until_deadline=1.0, importance=9, user_id=self.user_id)
+        skipped = make_task("skipped", days_until_deadline=30.0, importance=1, user_id=self.user_id)
+        examples = [(chosen, REFERENCE, 1), (skipped, REFERENCE, 0)]
+
+        network_a = PrioritizerNetwork(self.store)
+        network_a.score(chosen, REFERENCE)  # warms cache (formula-only; no model yet)
+
+        # Simulate another worker training and saving updated weights.
+        network_b = PrioritizerNetwork(self.store)
+        network_b.fit(self.user_id, examples, epochs=3)
+        b_score = network_b.score(chosen, REFERENCE)
+
+        # network_a must detect the new updated_at and reload, not serve the stale cache.
+        a_score_after = network_a.score(chosen, REFERENCE)
+        self.assertAlmostEqual(a_score_after, b_score, places=5)
+
+    def test_forget_by_another_instance_causes_formula_fallback(self):
+        chosen = make_task("chosen", days_until_deadline=1.0, importance=9, user_id=self.user_id)
+        skipped = make_task("skipped", days_until_deadline=30.0, importance=1, user_id=self.user_id)
+        examples = [(chosen, REFERENCE, 1), (skipped, REFERENCE, 0)]
+
+        network_a = PrioritizerNetwork(self.store)
+        network_a.fit(self.user_id, examples, epochs=3)
+        network_a.score(chosen, REFERENCE)  # warms cache with trained model
+
+        # Simulate another worker deleting the model.
+        network_b = PrioritizerNetwork(self.store)
+        network_b.forget(self.user_id)
+
+        # network_a must detect the model is gone and fall back to formula-only scoring.
+        formula_score = FormulaPrioritizer().score(chosen, REFERENCE)
+        a_score_after = network_a.score(chosen, REFERENCE)
+        self.assertAlmostEqual(a_score_after, formula_score)
+
+
 if __name__ == "__main__":
     unittest.main()
