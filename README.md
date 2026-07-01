@@ -561,6 +561,18 @@ days) and confirming the `ALTER TABLE` migration runs cleanly against a copy of 
 - Documentation for the server and client (module-level docs beyond this README).
 - Installation, uninstallation and update scripts, reusing/extending the existing
   `scripts/run.sh` and `scripts/reset_db.sh` rather than duplicating them.
+- **Waiting animations**: two distinct loading states that are currently missing from the client:
+  - **Training**: while `POST /api/prioritizer/train` is in-flight the Prioritizer window gives no
+    feedback — the Train button should show a spinner and be disabled until the response arrives.
+    Training can take several seconds (50 Keras epochs on the user's task history), so the lack of
+    feedback is noticeable.
+  - **Priority computation**: `GET /api/plan/today` and `GET /api/plan/week` both run
+    `PrioritizerService.rank` (and potentially `PrioritizerNetwork.score`, one Keras call per task)
+    server-side before responding — the Timetable window's Today and This-week views should show a
+    spinner in place of the plan list / week grid while the request is in-flight, then replace it
+    with the rendered result. The spinner should appear for every fetch that updates those views
+    (initial login, Refresh plan / Refresh week, and any task action that triggers
+    `refreshTasksAndPlan`).
 - `PrioritizerNetwork`/`PrioritizerTrainer` robustness (see the "Internal/robustness" gaps listed
   under Phase 6 above for the reasoning behind each):
   - Normalize `FeatureExtractor`'s feature vector before it reaches the network instead of feeding
@@ -687,6 +699,12 @@ roadmap phase that owns them (see above for full descriptions).
 - [ ] Create the installation script
 - [ ] Create the uninstallation script
 - [ ] Create the update script
+- [ ] Show a spinner on the Train button (and disable it) while `POST /api/prioritizer/train` is
+  in-flight (`app.js` train-button handler + `views.js` + CSS `@keyframes spin`)
+- [ ] Show a spinner in the Timetable's Today view (`#plan-list`) while `GET /api/plan/today` is
+  in-flight (call a `Views.showTodayPlanLoading()` helper at the top of `refreshTasksAndPlan`)
+- [ ] Show a spinner in the Timetable's This-week view (`#week-grid`) while `GET /api/plan/week`
+  is in-flight (call a `Views.showWeekPlanLoading()` helper at the top of `refreshWeekPlan`)
 - [ ] Normalize `FeatureExtractor`'s feature vector before it reaches `PrioritizerNetwork`
 - [ ] Batch `PrioritizerNetwork.score`'s `model.predict()` calls across a user's task list
 - [ ] Add a train/validation split or early stopping to `PrioritizerNetwork.fit`
