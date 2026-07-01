@@ -54,13 +54,16 @@ Open `http://localhost:5500` in a browser:
    switches between four windows client-side with no page reload; it always opens on
    **Timetable**, so you land on "what to work on" rather than the raw task list.
 3. The **Timetable** window has three plan tabs (Phase 14): **Today**, **This week**, and **This
-   month**. "This week" shows a weekday-aligned 7-column grid (Mon–Sun column headers; today
-   lands in its real weekday column with blank past-day cards for earlier days in the week; the
-   remaining days continue into the next calendar week's row). "This month" shows the same
-   day-cards wrapped into 5–6 rows covering the rest of the current calendar month — a proper
-   calendar layout built from the same component. Both range views share the "Hours available per
-   day" + **Refresh** form; the "Today" tab has its own separate hours + **Refresh plan** form.
-   Each day card shows planned tasks/hours, a load bar, and any deadlines falling on that day.
+   month**. "This week" shows a weekday-aligned 7-column grid (Mon–Sun headers; today lands in
+   its real weekday column; the slots before today show the following week's days as muted
+   full-content cards — so on a Thursday you see **[next Mon]** **[next Tue]** **[next Wed]**
+   **[Thu today]** **[Fri]** **[Sat]** **[Sun]** in one row, where the greyed-out cards to the
+   left show real plan data but are visually dimmed as a "next week preview"). "This month" shows
+   the same day-cards wrapped into 5–6 rows covering the rest of the current calendar month — a
+   proper calendar layout built from the same component. Both range views share the "Hours
+   available per day" + **Refresh** form; the "Today" tab has its own separate hours + **Refresh
+   plan** form. Each day card shows planned tasks/hours, a load bar, and any deadlines falling on
+   that day.
 4. In the **Tasks** window, add a task with the **New task** form (name, deadline, effort in
    hours, importance 1-10). It shows up under **Your tasks**, and the **Timetable** window's
    "Today's plan" shows the recommended hours to spend on it today (`DailyPlanner`, Phase 3)
@@ -97,7 +100,7 @@ python -m unittest discover -s client/test -p "*_test.py"
 ```
 The first command covers the server (Prioritizer, DailyPlanner, TaskManager, UserManager, API —
 117 tests). The second covers the client: `Client_test.py` (smoke test that the page and static
-assets are served) and `Js_test.py` (30 Playwright-driven tests for `views.js` and `api.js` —
+assets are served) and `Js_test.py` (31 Playwright-driven tests for `views.js` and `api.js` —
 Phase 12). The Playwright tests spin up the Flask client on a local ephemeral port and exercise
 the JS modules in a headless Chromium browser; they require `python -m playwright install
 chromium` once (the `scripts/install.sh` / `scripts/update.sh` scripts do this automatically).
@@ -684,16 +687,19 @@ right" layout. Fixed as part of this phase: `repeat(7, minmax(6rem, 1fr))` plus 
 forces exactly one row of 7 always, falling back to horizontal scroll instead of wrapping on
 narrow viewports (verified at both 1280px and 480px with a Playwright check).
 
-- **Weekday-aligned columns**: `Views.renderWeekPlan` now renders a fixed Mon-Sun header row
-  before the data cards, then inserts `todayOffset` muted past-day cards (one per weekday before
-  today in the current calendar week, computed as `(new Date().getDay() + 6) % 7`) so "today"
-  always lands in its correct weekday column. The grid stays exactly one row in week mode:
-  `refreshWeekPlan` requests only `7 − todayOffset` days (today through Sunday) rather than a
-  fixed 7 rolling days, so no cards ever overflow into a second row. Past-day cards are greyed
-  out (`.day-card-past`, `opacity: 0.6`, muted background) and show only the date label. Today's
-  card has an amber border (`#d97706`) and a subtle warm tint background so it stands out from
-  both the past (grey) and future (plain) cards. No server change needed; `plan_week`'s response
-  already carries an explicit `date` per entry.
+- **Weekday-aligned columns**: `Views.renderWeekPlan` renders a fixed Mon-Sun header row, then
+  splits the 7 rolling days from today into two buckets: **this-week** (today through Sunday of
+  the current calendar week) and **next-week overflow** (Monday onward of the following week,
+  computed by comparing each date against `sundayStr = today + (6 − todayOffset)` days).
+  Next-week cards are inserted into the DOM *first* so CSS grid auto-placement puts them in
+  columns Mon→(today−1); this-week cards follow, landing in today's column onward. Example for
+  Thursday (offset 3): `[next Mon muted] [next Tue muted] [next Wed muted] [Thu today] [Fri]
+  [Sat] [Sun]` — exactly 7 cards in one row. The muted cards (`.day-card-past`, 60 % opacity,
+  grey background) are full-structure `buildDayCard` cards rendered from real server data, so
+  they show scheduled tasks, hours, and deadlines — just visually dimmed as a "next week
+  preview". Today's card has an amber border (`#d97706`) and a warm tint to stand out.
+  `refreshWeekPlan` requests a fixed 7 rolling days from today; the this-week/next-week split is
+  done entirely client-side with no server change needed.
 - **Month view**: a new "This month" tab alongside Today/This week in `plan-tabs` requests the
   days remaining in the current calendar month from `GET /api/plan/week` (already bounded to
   `[1, 31]`, enough for any month). The same `Views.renderWeekPlan` renders the result — the
@@ -705,9 +711,10 @@ narrow viewports (verified at both 1280px and 480px with a Playwright check).
 - First-day-of-week is Monday (ISO) for both; a configurable Sunday-start option is left for if
   it's ever actually requested, not built speculatively now.
 
-Verified with new Playwright-driven JS tests (weekday header cells present, blank past-day
-placeholders match today's weekday offset, month tab exists, trailing blanks complete the last row
-of a month render).
+Verified with new Playwright-driven JS tests (weekday header cells present in both modes;
+next-week overflow cards receive `.day-card-past`; with 7 rolling days the muted card count
+matches today's weekday offset; month tab exists; trailing blanks complete the last row of a
+month render).
 
 ### Phase 15 — Account management & session polish
 Remaining gaps in the account and session layers that don't belong with any earlier phase:
@@ -814,9 +821,10 @@ roadmap phase that owns them (see above for full descriptions).
 ### Phase 14 — Calendar-aligned week & month view (done)
 - [x] Force `#week-grid` to a fixed single row of 7 (was wrapping onto multiple rows on narrower
   viewports via `auto-fit`); horizontal scroll as the narrow-viewport fallback instead of wrapping
-- [x] Weekday-aligned columns: fixed Mon-Sun headers, "today" lands in its real weekday column
-  (leading blank "past" placeholder cards for earlier days in the current calendar week) instead
-  of always being column 1; trailing blank cards complete the last partial week row in month mode
+- [x] Weekday-aligned columns: fixed Mon-Sun headers, "today" lands in its real weekday column;
+  columns before today show the following week's muted full-content cards ("next week preview")
+  so the grid is always one row; trailing blank cards complete the last partial week row in month
+  mode
 - [x] "This month" tab: same day-card grid grouped into 5-6 week-rows instead of one row,
   reusing `GET /api/plan/week` with `days = daysRemainingInMonth` (max 31, within the existing
   server bound); trailing blank cards added to complete the last partial week row
