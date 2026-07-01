@@ -102,6 +102,8 @@ gate and, only if it's green:
   to redeploy the Flask API — described by `render.yaml` — on **Render.com**.
 - Creates a GitHub Release for the tag with auto-generated notes.
 
+See the [GitHub Pages deployment history](https://github.com/DanelArias-Dreyton257/Priotask/deployments/github-pages) for past deploys of the client.
+
 ### Releasing a new version
 1. Merge `development` into `main` via a pull request.
 2. Update [`CHANGELOG.md`](CHANGELOG.md) (move `[Unreleased]` items under a new
