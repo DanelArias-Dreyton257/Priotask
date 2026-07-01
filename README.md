@@ -580,7 +580,7 @@ confirm the listed tasks now include a second open occurrence with the deadline 
 days) and confirming the `ALTER TABLE` migration runs cleanly against a copy of a real pre-existing
 `priotask.db`.
 
-### Phase 12 — Hardening & polish (in progress)
+### Phase 12 — Hardening & polish (done)
 The first wave of Phase 12 work lands three user-visible waiting animations and a full robustness
 pass over `PrioritizerNetwork`:
 
@@ -626,17 +626,13 @@ pass over `PrioritizerNetwork`:
   weights, so concurrent `POST /api/prioritizer/train` calls for the same user are serialized
   rather than racing on `ModelStore.save`.
 
-Still open within Phase 12:
-- JS unit tests for `views.js`/`app.js`/`api.js` — `client/test/Client_test.py` covers that the
-  static assets are served and the HTML shell contains expected elements, but the JS module logic
-  (DOM rendering helpers, filter/sort, recurrence field wiring) is untested beyond manual browser
-  checks. The plan: a Playwright-driven Python test file (`client/test/Js_test.py`) that loads
-  the app shell in a headless browser and exercises the JS functions in-browser via
-  `page.evaluate()` — same approach used for Phases 8, 9 and 13 verification.
-- Documentation: module-level docstrings for the server services and client JS modules beyond
-  this README.
-- Installation, uninstallation and update scripts, extending `scripts/run.sh` and
-  `scripts/reset_db.sh`.
+Also done: 38 Playwright-driven JS unit tests across 8 classes (`client/test/Js_test.py`) covering
+spinners, message banner, category-field and recurrence-field wiring/reading, filter-select
+population, `renderPlan`/`renderWeekPlan`, `ApiClient` error handling and URL construction, and
+the weekday-aligned week-view layout. Module-level docstrings added to all server services and
+client JS modules. `scripts/install.sh`, `update.sh`, and `uninstall.sh` added.
+
+One item remains open within Phase 12:
 - `PrioritizerNetwork._cache` safety for multi-process/worker deployments — still a per-process
   in-memory dict; fine for the current single-process dev server.
 
@@ -771,14 +767,14 @@ roadmap phase that owns them (see above for full descriptions).
 - [x] Recurrence rule on a task (interval/unit, optional end date) - server schema + storage
 - [x] Completing a recurring task spawns its next occurrence instead of just marking it done
 - [x] "Repeats" control on the client task form, plus a recurring-task indicator in the task list
-### Phase 12 — Hardening & polish (in progress)
+### Phase 12 — Hardening & polish (done)
 - [x] JS unit tests for `views.js`/`app.js`/`api.js` — Playwright-driven `client/test/Js_test.py`;
-  30 tests across 5 test classes exercising spinners, message banner, category-field wiring/reading,
+  38 tests across 8 test classes exercising spinners, message banner, category-field wiring/reading,
   recurrence-field wiring/reading, filter-select population, `renderPlan` (including the due-today
-  badge), and `ApiClient` error handling + URL construction (via `page.route()` interception). The
-  Flask client app is served on an ephemeral port; each test gets a fresh browser page so state
-  never bleeds between tests. Requires `python -m playwright install chromium` once (the install
-  script does this automatically).
+  badge), `renderWeekPlan` (weekday-aligned layout, muted next-week cards), and `ApiClient` error
+  handling + URL construction (via `page.route()` interception). The Flask client app is served on
+  an ephemeral port; each test gets a fresh browser page so state never bleeds between tests.
+  Requires `python -m playwright install chromium` once (the install script does this automatically).
 - [x] Create the documentation for the server — module-level docstrings added to
   `TaskManager`, `UserManager`, `app.py`, `task_routes`, `plan_routes`, `prioritizer_routes`,
   `user_routes`; existing class/method docstrings unchanged.
