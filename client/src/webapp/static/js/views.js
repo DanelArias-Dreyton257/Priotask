@@ -173,6 +173,38 @@ export const Views = {
         resetButton.classList.toggle("hidden", !trained);
     },
 
+    // Phase 12: shown while GET /api/plan/today is in-flight; replaced by
+    // renderPlan() once the response arrives.
+    showTodayPlanLoading() {
+        const list = document.getElementById("plan-list");
+        list.innerHTML = "";
+        const item = document.createElement("li");
+        item.className = "loading-state";
+        item.innerHTML = "<span class='spinner'></span> Loading today's plan...";
+        list.appendChild(item);
+    },
+
+    // Phase 12: shown while GET /api/plan/week is in-flight; replaced by
+    // renderWeekPlan() once the response arrives.
+    showWeekPlanLoading() {
+        const grid = document.getElementById("week-grid");
+        grid.innerHTML = "<div class='loading-state'><span class='spinner'></span> Loading week plan...</div>";
+    },
+
+    // Phase 12: disables the Train button and shows a spinner while
+    // POST /api/prioritizer/train is in-flight (training can take several
+    // seconds on 50 Keras epochs); re-enables it when `loading` is false.
+    setTrainButtonLoading(loading) {
+        const btn = document.getElementById("train-button");
+        btn.disabled = loading;
+        if (loading) {
+            btn.dataset.originalText = btn.textContent;
+            btn.innerHTML = "<span class='spinner'></span> Training...";
+        } else {
+            btn.innerHTML = btn.dataset.originalText || "Train priority model";
+        }
+    },
+
     // Phase 9: a 7(+)-day grid, one card per day - planned tasks/hours, a
     // load bar (planned hours vs. that day's capacity) and any deadlines
     // falling on that day even if no hours were scheduled for them.

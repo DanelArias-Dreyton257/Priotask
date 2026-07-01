@@ -404,3 +404,33 @@ ul {
     color: #888;
     font-style: italic;
 }
+
+/* Phase 12: loading spinners */
+@keyframes spin {
+    to { transform: rotate(360deg); }
+}
+
+.spinner {
+    display: inline-block;
+    width: 1em;
+    height: 1em;
+    border: 2px solid currentColor;
+    border-right-color: transparent;
+    border-radius: 50%;
+    animation: spin 0.7s linear infinite;
+    vertical-align: middle;
+    margin-right: 0.35em;
+}
+
+.loading-state {
+    display: flex;
+    align-items: center;
+    color: #6b7280;
+    padding: 0.5rem 0;
+    font-size: 0.9rem;
+}
+
+button:disabled {
+    opacity: 0.6;
+    cursor: not-allowed;
+}

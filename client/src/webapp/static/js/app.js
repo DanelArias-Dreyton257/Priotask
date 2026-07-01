@@ -17,6 +17,7 @@ let editingTaskId = null;
 let showingWeekPlan = false;
 
 async function refreshTasksAndPlan() {
+    Views.showTodayPlanLoading();
     const hours = document.getElementById("hours-input").value || undefined;
     const [tasks, plan] = await Promise.all([api.listTasks(), api.getTodayPlan(hours)]);
     allTasks = tasks;
@@ -28,6 +29,7 @@ async function refreshTasksAndPlan() {
 }
 
 async function refreshWeekPlan() {
+    Views.showWeekPlanLoading();
     const hours = document.getElementById("week-hours-input").value || undefined;
     const days = await api.getWeekPlan(hours, 7);
     Views.renderWeekPlan(days);
@@ -284,15 +286,20 @@ document.getElementById("plan-tab-week").addEventListener("click", () => {
     runOrReportError(refreshWeekPlan);
 });
 
-document.getElementById("train-button").addEventListener("click", () => {
-    runOrReportError(async () => {
-        const { trained } = await api.trainPrioritizer();
-        Views.showMessage(trained
-            ? "Priority model trained on your task history."
-            : "Not enough task history yet to train the priority model.");
-        await refreshTasksAndPlan();
-        await refreshPrioritizerStatus();
-    });
+document.getElementById("train-button").addEventListener("click", async () => {
+    Views.setTrainButtonLoading(true);
+    try {
+        await runOrReportError(async () => {
+            const { trained } = await api.trainPrioritizer();
+            Views.showMessage(trained
+                ? "Priority model trained on your task history."
+                : "Not enough task history yet to train the priority model.");
+            await refreshTasksAndPlan();
+            await refreshPrioritizerStatus();
+        });
+    } finally {
+        Views.setTrainButtonLoading(false);
+    }
 });
 
 document.getElementById("reset-model-button").addEventListener("click", () => {
