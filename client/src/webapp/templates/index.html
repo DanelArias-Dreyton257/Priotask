@@ -150,6 +150,18 @@
                         <input type="password" name="new_password" placeholder="New password" required>
                         <button type="submit">Change password</button>
                     </form>
+
+                    <div id="delete-account-section">
+                        <h3>Delete account</h3>
+                        <p class="window-hint">This permanently deletes your account, all your tasks, and your trained priority model. This cannot be undone.</p>
+                        <button id="delete-account-start-button" type="button" class="danger-button">Delete account</button>
+                        <div id="delete-account-confirm" class="hidden">
+                            <p>Type <strong>DELETE</strong> to confirm:</p>
+                            <input type="text" id="delete-account-confirm-input" placeholder="DELETE" autocomplete="off">
+                            <button id="delete-account-confirm-button" type="button" class="danger-button" disabled>Yes, delete my account</button>
+                            <button id="delete-account-cancel-button" type="button">Cancel</button>
+                        </div>
+                    </div>
                 </section>
             </section>
         </section>

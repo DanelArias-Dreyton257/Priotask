@@ -118,6 +118,10 @@ export class ApiClient {
             auth: true,
         });
     }
+
+    deleteAccount() {
+        return this._request("DELETE", "/api/users/me", { auth: true });
+    }
 }
 
 export { ApiError };

@@ -456,3 +456,29 @@ button:disabled {
     opacity: 0.6;
     cursor: not-allowed;
 }
+
+.danger-button {
+    background: #d9534f;
+}
+
+#delete-account-section {
+    margin-top: 1.5rem;
+    border-top: 1px solid #e5e7eb;
+    padding-top: 1rem;
+}
+
+#delete-account-confirm {
+    margin-top: 0.75rem;
+    display: flex;
+    flex-direction: column;
+    gap: 0.5rem;
+    max-width: 22rem;
+}
+
+#delete-account-confirm input {
+    padding: 0.4rem 0.6rem;
+    border: 1px solid #d1d5db;
+    border-radius: 4px;
+    font-size: 0.95rem;
+    width: 100%;
+}

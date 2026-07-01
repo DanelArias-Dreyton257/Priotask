@@ -359,6 +359,30 @@ document.getElementById("change-password-form").addEventListener("submit", (even
     });
 });
 
+document.getElementById("delete-account-start-button").addEventListener("click", () => {
+    document.getElementById("delete-account-confirm").classList.remove("hidden");
+    document.getElementById("delete-account-confirm-input").value = "";
+    document.getElementById("delete-account-confirm-button").disabled = true;
+    document.getElementById("delete-account-confirm-input").focus();
+});
+
+document.getElementById("delete-account-confirm-input").addEventListener("input", (event) => {
+    document.getElementById("delete-account-confirm-button").disabled =
+        event.target.value.trim() !== "DELETE";
+});
+
+document.getElementById("delete-account-cancel-button").addEventListener("click", () => {
+    document.getElementById("delete-account-confirm").classList.add("hidden");
+});
+
+document.getElementById("delete-account-confirm-button").addEventListener("click", () => {
+    runOrReportError(async () => {
+        await api.deleteAccount();
+        logout();
+        Views.showMessage("Account deleted.");
+    });
+});
+
 Views.wireRecurrenceField(
     document.getElementById("new-task-recurrence-select"),
     document.getElementById("new-task-recurrence-interval"),
