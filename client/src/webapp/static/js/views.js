@@ -205,16 +205,43 @@ export const Views = {
         }
     },
 
-    // Phase 9: a 7(+)-day grid, one card per day - planned tasks/hours, a
-    // load bar (planned hours vs. that day's capacity) and any deadlines
-    // falling on that day even if no hours were scheduled for them.
-    renderWeekPlan(days) {
+    // Phase 9 / Phase 14: a day-card grid with fixed Mon-Sun column headers.
+    // Earlier days in the current calendar week are shown as muted past-day
+    // cards (greyed out, date label only) so "today" always lands in its real
+    // weekday column and the grid stays exactly one row in week mode.
+    // monthMode: invisible trailing blank cards complete the last partial row.
+    renderWeekPlan(days, { monthMode = false } = {}) {
         const grid = document.getElementById("week-grid");
         grid.innerHTML = "";
 
-        const today = new Date().toISOString().slice(0, 10);
+        const WEEKDAYS = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"];
+        for (const label of WEEKDAYS) {
+            const header = document.createElement("div");
+            header.className = "week-header-cell";
+            header.textContent = label;
+            grid.appendChild(header);
+        }
+
+        // Muted past-day cards for Mon up to (but not including) today.
+        const todayDate = new Date();
+        const todayOffset = (todayDate.getDay() + 6) % 7; // Mon=0, Sun=6
+        for (let i = 0; i < todayOffset; i++) {
+            const past = new Date(todayDate);
+            past.setDate(past.getDate() - (todayOffset - i));
+            grid.appendChild(pastDayCard(past.toISOString().slice(0, 10)));
+        }
+
+        const today = todayDate.toISOString().slice(0, 10);
         for (const day of days) {
             grid.appendChild(buildDayCard(day, day.date === today));
+        }
+
+        if (monthMode) {
+            const totalDataCells = todayOffset + days.length;
+            const trailing = (7 - (totalDataCells % 7)) % 7;
+            for (let i = 0; i < trailing; i++) {
+                grid.appendChild(blankDayCard());
+            }
         }
     },
 };
@@ -370,6 +397,26 @@ function buildEditItem(task, categories, onSaveEdit, onCancelEdit) {
 
     item.appendChild(form);
     return item;
+}
+
+// Muted card for a past weekday — shows the date label, nothing else.
+function pastDayCard(isoDate) {
+    const card = document.createElement("div");
+    card.className = "day-card day-card-past";
+    const d = new Date(`${isoDate}T00:00:00`);
+    const weekday = d.toLocaleDateString(undefined, { weekday: "short" });
+    const label = document.createElement("span");
+    label.className = "day-card-date";
+    label.textContent = `${weekday} ${isoDate.slice(5)}`;
+    card.appendChild(label);
+    return card;
+}
+
+// Invisible filler used only to complete the last partial row in month mode.
+function blankDayCard() {
+    const card = document.createElement("div");
+    card.className = "day-card day-card-blank";
+    return card;
 }
 
 function buildDayCard(day, isToday) {

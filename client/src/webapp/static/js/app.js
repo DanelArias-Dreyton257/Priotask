@@ -14,7 +14,7 @@ const api = new ApiClient(window.PRIOTASK_API_BASE_URL);
 let allTasks = [];
 let scoreByTaskId = new Map();
 let editingTaskId = null;
-let showingWeekPlan = false;
+let activePlanView = "today"; // "today" | "week" | "month"
 
 async function refreshTasksAndPlan() {
     Views.showTodayPlanLoading();
@@ -25,14 +25,29 @@ async function refreshTasksAndPlan() {
     refreshCategoryOptions();
     renderTaskList();
     Views.renderPlan(plan);
-    if (showingWeekPlan) await refreshWeekPlan();
+    if (activePlanView === "week") await refreshWeekPlan();
+    if (activePlanView === "month") await refreshMonthPlan();
 }
 
 async function refreshWeekPlan() {
     Views.showWeekPlanLoading();
     const hours = document.getElementById("week-hours-input").value || undefined;
-    const days = await api.getWeekPlan(hours, 7);
+    // Request only today→Sunday so the grid stays exactly one row (Mon–Sun).
+    // renderWeekPlan fills earlier columns with muted past-day cards.
+    const todayOffset = (new Date().getDay() + 6) % 7; // Mon=0, Sun=6
+    const daysThisWeek = 7 - todayOffset;
+    const days = await api.getWeekPlan(hours, daysThisWeek);
     Views.renderWeekPlan(days);
+}
+
+async function refreshMonthPlan() {
+    Views.showWeekPlanLoading();
+    const hours = document.getElementById("week-hours-input").value || undefined;
+    const today = new Date();
+    const daysInMonth = new Date(today.getFullYear(), today.getMonth() + 1, 0).getDate();
+    const daysLeft = Math.min(31, daysInMonth - today.getDate() + 1);
+    const days = await api.getWeekPlan(hours, daysLeft);
+    Views.renderWeekPlan(days, { monthMode: true });
 }
 
 async function refreshPrioritizerStatus() {
@@ -266,24 +281,28 @@ document.getElementById("plan-form").addEventListener("submit", (event) => {
 
 document.getElementById("week-plan-form").addEventListener("submit", (event) => {
     event.preventDefault();
-    runOrReportError(refreshWeekPlan);
+    runOrReportError(activePlanView === "month" ? refreshMonthPlan : refreshWeekPlan);
 });
 
-document.getElementById("plan-tab-today").addEventListener("click", () => {
-    showingWeekPlan = false;
-    document.getElementById("plan-tab-today").classList.add("active");
-    document.getElementById("plan-tab-week").classList.remove("active");
-    document.getElementById("plan-today-view").classList.remove("hidden");
-    document.getElementById("plan-week-view").classList.add("hidden");
-});
+function switchPlanTab(view) {
+    activePlanView = view;
+    document.getElementById("plan-tab-today").classList.toggle("active", view === "today");
+    document.getElementById("plan-tab-week").classList.toggle("active", view === "week");
+    document.getElementById("plan-tab-month").classList.toggle("active", view === "month");
+    document.getElementById("plan-today-view").classList.toggle("hidden", view !== "today");
+    document.getElementById("plan-week-view").classList.toggle("hidden", view === "today");
+}
+
+document.getElementById("plan-tab-today").addEventListener("click", () => switchPlanTab("today"));
 
 document.getElementById("plan-tab-week").addEventListener("click", () => {
-    showingWeekPlan = true;
-    document.getElementById("plan-tab-week").classList.add("active");
-    document.getElementById("plan-tab-today").classList.remove("active");
-    document.getElementById("plan-week-view").classList.remove("hidden");
-    document.getElementById("plan-today-view").classList.add("hidden");
+    switchPlanTab("week");
     runOrReportError(refreshWeekPlan);
+});
+
+document.getElementById("plan-tab-month").addEventListener("click", () => {
+    switchPlanTab("month");
+    runOrReportError(refreshMonthPlan);
 });
 
 document.getElementById("train-button").addEventListener("click", async () => {

@@ -502,5 +502,95 @@ class ApiClientTest(_PlaywrightBase):
         self.assertIsNone(result)
 
 
+# ---------------------------------------------------------------------------
+# views.js — renderWeekPlan weekday alignment (Phase 14)
+# ---------------------------------------------------------------------------
+
+class WeekPlanViewsTest(_PlaywrightBase):
+
+    # Minimal fake day matching the shape Views.renderWeekPlan expects.
+    _DAY = {"date": "2099-01-07", "available_hours": 6, "planned_hours_total": 2,
+             "entries": [], "deadlines": []}
+
+    def test_render_week_plan_adds_weekday_header_cells(self):
+        html = self.js("""async () => {
+            const { Views } = await import('/static/js/views.js');
+            Views.renderWeekPlan([]);
+            return document.getElementById('week-grid').innerHTML;
+        }""")
+        for label in ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"]:
+            self.assertIn(label, html, f"header '{label}' missing from week grid")
+
+    def test_render_week_plan_past_day_cards_match_today_offset(self):
+        import datetime
+        today_offset = datetime.date.today().weekday()  # Mon=0, Sun=6
+        past_count = self.js("""async () => {
+            const { Views } = await import('/static/js/views.js');
+            Views.renderWeekPlan([]);
+            return document.getElementById('week-grid').querySelectorAll('.day-card-past').length;
+        }""")
+        self.assertEqual(past_count, today_offset)
+
+    def test_render_week_plan_produces_day_card_for_each_entry(self):
+        result = self.js(f"""async () => {{
+            const {{ Views }} = await import('/static/js/views.js');
+            const day = {{"date": "2099-01-07", "available_hours": 6,
+                         "planned_hours_total": 2, "entries": [], "deadlines": []}};
+            Views.renderWeekPlan([day, day, day]);
+            const grid = document.getElementById('week-grid');
+            // Exclude both past-day and trailing-blank cards — only real data cards.
+            return grid.querySelectorAll('.day-card:not(.day-card-past):not(.day-card-blank)').length;
+        }}""")
+        self.assertEqual(result, 3)
+
+    def test_render_week_plan_today_card_gets_is_today_class(self):
+        today = date.today().isoformat()
+        has_class = self.js(f"""async () => {{
+            const {{ Views }} = await import('/static/js/views.js');
+            const day = {{"date": "{today}", "available_hours": 6,
+                         "planned_hours_total": 0, "entries": [], "deadlines": []}};
+            Views.renderWeekPlan([day]);
+            return document.getElementById('week-grid').querySelector('.is-today') !== null;
+        }}""")
+        self.assertTrue(has_class)
+
+    def test_render_week_plan_month_mode_adds_trailing_blanks_to_complete_row(self):
+        import datetime
+        today_offset = datetime.date.today().weekday()
+        # Three data days; trailing blank count = (7 - (offset + 3) % 7) % 7.
+        # Leading cards are .day-card-past (not .day-card-blank), so only
+        # trailing fillers appear as .day-card-blank.
+        expected_trailing = (7 - (today_offset + 3) % 7) % 7
+        result = self.js("""async () => {
+            const { Views } = await import('/static/js/views.js');
+            const day = {"date": "2099-01-07", "available_hours": 6,
+                         "planned_hours_total": 0, "entries": [], "deadlines": []};
+            Views.renderWeekPlan([day, day, day], { monthMode: true });
+            const grid = document.getElementById('week-grid');
+            return grid.querySelectorAll('.day-card-blank').length;
+        }""")
+        self.assertEqual(result, expected_trailing)
+
+    def test_month_tab_button_exists_in_html(self):
+        exists = self.js("""() => document.getElementById('plan-tab-month') !== null""")
+        self.assertTrue(exists)
+
+    def test_month_tab_click_shows_week_view_panel(self):
+        result = self.js("""async () => {
+            const btn = document.getElementById('plan-tab-month');
+            btn.click();
+            const weekView = document.getElementById('plan-week-view');
+            const todayView = document.getElementById('plan-today-view');
+            return {
+                weekHidden: weekView.classList.contains('hidden'),
+                todayHidden: todayView.classList.contains('hidden'),
+                monthActive: btn.classList.contains('active'),
+            };
+        }""")
+        self.assertFalse(result['weekHidden'])
+        self.assertTrue(result['todayHidden'])
+        self.assertTrue(result['monthActive'])
+
+
 if __name__ == "__main__":
     unittest.main()
