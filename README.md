@@ -53,28 +53,31 @@ Open `http://localhost:5500` in a browser:
 2. Once logged in, a **Tasks** / **Timetable** / **Prioritizer** / **Account** nav bar (Phase 13)
    switches between four windows client-side with no page reload; it always opens on
    **Timetable**, so you land on "what to work on" rather than the raw task list.
-3. In the **Tasks** window, add a task with the **New task** form (name, deadline, effort in
+3. The **Timetable** window has three plan tabs (Phase 14): **Today**, **This week**, and **This
+   month**. "This week" shows a weekday-aligned 7-column grid (Mon–Sun column headers; today
+   lands in its real weekday column with blank past-day cards for earlier days in the week; the
+   remaining days continue into the next calendar week's row). "This month" shows the same
+   day-cards wrapped into 5–6 rows covering the rest of the current calendar month — a proper
+   calendar layout built from the same component. Both range views share the "Hours available per
+   day" + **Refresh** form; the "Today" tab has its own separate hours + **Refresh plan** form.
+   Each day card shows planned tasks/hours, a load bar, and any deadlines falling on that day.
+4. In the **Tasks** window, add a task with the **New task** form (name, deadline, effort in
    hours, importance 1-10). It shows up under **Your tasks**, and the **Timetable** window's
    "Today's plan" shows the recommended hours to spend on it today (`DailyPlanner`, Phase 3)
    alongside its priority rank. The **Repeats** dropdown (Phase 11) lets it recur daily/weekly/
    monthly (with an "every N" interval and an optional end date) — completing a recurring task
    automatically spawns its next occurrence with the deadline advanced by the rule, instead of
    just marking it done.
-4. **Done** marks a task complete, **Delete** removes it, **Edit** turns the task into an inline
+5. **Done** marks a task complete, **Delete** removes it, **Edit** turns the task into an inline
    form to change any of its fields (including its recurrence rule), and **Log hours** logs
    partial progress (subtracting from the task's remaining effort, auto-completing it once none
    is left); all of these refresh **Today's plan** automatically. The **Refresh plan** button
    re-fetches the plan with a different hours budget.
-5. Above the task list: **search by name**, **filter by type/sub-type**, **sort** by priority/
+6. Above the task list: **search by name**, **filter by type/sub-type**, **sort** by priority/
    deadline/type, and a **Show completed** checkbox to reveal done tasks (hidden by default).
    Overdue tasks are highlighted, and recurring tasks show a "🔁 repeats ..." badge. Type/sub-type
    on the task form (and the edit form) are dropdowns of categories you've already used, with a
    "+ Add new..." option for a new one.
-6. The **Timetable** window has a **Today** / **This week** toggle (Phase 9). "This week" shows a
-   7-day grid: each day's planned tasks and hours, a load bar (planned hours vs. that day's
-   capacity), and any task deadlines falling on that day even if no hours were scheduled for it
-   ("Due: ..."). "Hours available per day" + **Refresh week** re-fetches it with a different daily
-   budget.
 7. The **Prioritizer** window's **Train priority model** fits the user's `PrioritizerNetwork`
    (Phase 6) on their task history so far — the button is disabled and shows a spinner while
    training is in flight (Phase 12), since the Keras fit can take a few seconds; it reports
@@ -82,7 +85,7 @@ Open `http://localhost:5500` in a browser:
    line next to it (Phase 10) shows whether a trained model is currently active and when it was
    last trained, without itself triggering training; **Reset model** (shown once a model is
    active) discards it and reverts to formula-only scoring. The **Timetable** window's plan list
-   and week grid also show a spinner while their server requests are in-flight (Phase 12).
+   and week/month grids also show a spinner while their server requests are in-flight (Phase 12).
 8. The **Account** window (Phase 13) shows the logged-in user's username/email, and lets them
    update their email or change their password (the current password is verified server-side
    before the change is accepted).
@@ -673,7 +676,7 @@ tabs, update email, change password, confirm the wrong-current-password case is 
 and back in with the new password) on top of new server unit/API test coverage
 (`UserManager_test.py`, `Api_test.py`).
 
-### Phase 14 — Calendar-aligned week & month view
+### Phase 14 — Calendar-aligned week & month view (done)
 The Phase 9 week grid (`#week-grid`) used `grid-template-columns: repeat(auto-fit, minmax(7.5rem,
 1fr))`, which picks its own column count from the available width - on anything narrower than
 ~7 cards-wide it silently wrapped onto a second row, breaking the "this is one week, read left to
@@ -681,25 +684,47 @@ right" layout. Fixed as part of this phase: `repeat(7, minmax(6rem, 1fr))` plus 
 forces exactly one row of 7 always, falling back to horizontal scroll instead of wrapping on
 narrow viewports (verified at both 1280px and 480px with a Playwright check).
 
-Still open, and the reason this is its own phase rather than a one-line fix: today the grid always
-puts "today" in the first column regardless of which weekday it actually is (`plan_week`'s `days`
-window starts at today and counts forward, so day 0 is whatever weekday "today" happens to be).
-That's fine for a single rolling week, but doesn't generalize to a real calendar:
-- **Weekday-aligned columns**: render the grid under fixed Mon-Sun column headers and offset the
-  first row so "today" lands in its real weekday column instead of always column 1 - e.g. if today
-  is Wednesday, Monday/Tuesday of the current calendar week render as empty "past" placeholders
-  (no data - `DailyPlanner.plan_week` only ever looks forward from today, and shouldn't start
-  recommending hours for days that have already happened) and the row continues into next week
-  once it runs past Sunday. This needs no server change - `plan_week`'s response already carries
-  an explicit `date` per entry; only `Views.renderWeekPlan`/`buildDayCard` need to compute today's
-  weekday offset and insert the leading blanks.
-- **Month view**: once the grid is weekday-aligned, wrapping the same day-cards into multiple
-  week-rows (5-6 rows x 7 columns) turns it into a month grid for free - same data shape, same
-  card component, just grouped by calendar week instead of rendered as one row. Needs requesting
-  more days from `GET /api/plan/week` (already bounded to `[1, 31]`, enough for a full month) and
-  a "This month" tab alongside Today/This week in `plan-tabs`.
-- First-day-of-week is assumed Monday (ISO) for both; a configurable Sunday-start option is left
-  for if it's ever actually requested, not built speculatively now.
+- **Weekday-aligned columns**: `Views.renderWeekPlan` now renders a fixed Mon-Sun header row
+  before the data cards, then inserts `todayOffset` muted past-day cards (one per weekday before
+  today in the current calendar week, computed as `(new Date().getDay() + 6) % 7`) so "today"
+  always lands in its correct weekday column. The grid stays exactly one row in week mode:
+  `refreshWeekPlan` requests only `7 − todayOffset` days (today through Sunday) rather than a
+  fixed 7 rolling days, so no cards ever overflow into a second row. Past-day cards are greyed
+  out (`.day-card-past`, `opacity: 0.6`, muted background) and show only the date label. Today's
+  card has an amber border (`#d97706`) and a subtle warm tint background so it stands out from
+  both the past (grey) and future (plain) cards. No server change needed; `plan_week`'s response
+  already carries an explicit `date` per entry.
+- **Month view**: a new "This month" tab alongside Today/This week in `plan-tabs` requests the
+  days remaining in the current calendar month from `GET /api/plan/week` (already bounded to
+  `[1, 31]`, enough for any month). The same `Views.renderWeekPlan` renders the result — the
+  weekday alignment and grid wrap turn it into a proper calendar grid for free. Trailing blank
+  cards are appended to complete the final partial week row so the grid is always rectangular.
+  The "Hours available per day" + Refresh form is shared between the week and month views; the
+  form's submit handler dispatches to `refreshWeekPlan` or `refreshMonthPlan` depending on the
+  active tab (`activePlanView` state in `app.js`, replacing the old `showingWeekPlan` boolean).
+- First-day-of-week is Monday (ISO) for both; a configurable Sunday-start option is left for if
+  it's ever actually requested, not built speculatively now.
+
+Verified with new Playwright-driven JS tests (weekday header cells present, blank past-day
+placeholders match today's weekday offset, month tab exists, trailing blanks complete the last row
+of a month render).
+
+### Phase 15 — Account management & session polish
+Remaining gaps in the account and session layers that don't belong with any earlier phase:
+- **Delete account**: the Account window (Phase 13) lets users update their email and change their
+  password but has no way to delete the account. Needs `DELETE /api/users/me` (server: removes the
+  user row, cascades to tasks/model weights/snapshots) and a confirmation-gated "Delete account"
+  button in the Account window.
+- **Session expiry**: `AuthService`'s in-memory token store never expires tokens and is wiped on
+  server restart, logging everyone out. A real expiry policy (e.g. sliding 7-day expiry, persisted
+  in a `sessions` DB table) would let users stay logged in across restarts and automatically revoke
+  abandoned sessions. The `require_auth` decorator and `TokenManager` stub are the natural
+  extension points.
+- **Auto-retrain after N completions**: the Prioritizer window requires a manual "Train" click.
+  Automatically re-fitting the model after every Nth task completion (N configurable, e.g. 5)
+  would keep the model fresh without user action. The hook belongs in `TaskManager.mark_done`
+  (already the completion choke-point); the threshold can be read from a user preference or a
+  server constant.
 
 ## The TODO List
 This section presents all the tasks that need to be done to complete the project, grouped by the
@@ -786,14 +811,22 @@ roadmap phase that owns them (see above for full descriptions).
 - [x] `GET /api/users/me`, `PUT /api/users/me` (update email) and `POST /api/users/me/password`
   (change password)
 - [x] Account window: view username/email, change password, update email
-### Phase 14 — Calendar-aligned week & month view
+### Phase 14 — Calendar-aligned week & month view (done)
 - [x] Force `#week-grid` to a fixed single row of 7 (was wrapping onto multiple rows on narrower
   viewports via `auto-fit`); horizontal scroll as the narrow-viewport fallback instead of wrapping
-- [ ] Weekday-aligned columns: fixed Mon-Sun headers, "today" lands in its real weekday column
-  (leading blank "past" placeholders for earlier days in the current calendar week) instead of
-  always being column 1
-- [ ] "This month" tab: same day-card grid grouped into 5-6 week-rows instead of one row, reusing
-  `GET /api/plan/week` with a larger `days` value
+- [x] Weekday-aligned columns: fixed Mon-Sun headers, "today" lands in its real weekday column
+  (leading blank "past" placeholder cards for earlier days in the current calendar week) instead
+  of always being column 1; trailing blank cards complete the last partial week row in month mode
+- [x] "This month" tab: same day-card grid grouped into 5-6 week-rows instead of one row,
+  reusing `GET /api/plan/week` with `days = daysRemainingInMonth` (max 31, within the existing
+  server bound); trailing blank cards added to complete the last partial week row
+### Phase 15 — Account management & session polish
+- [ ] `DELETE /api/users/me` (server: cascade-delete user + tasks + model weights + snapshots)
+  and a confirmation-gated "Delete account" button in the Account window
+- [ ] Token expiry policy: persist sessions in a `sessions` DB table with a sliding expiry so
+  users survive server restarts and abandoned sessions are eventually revoked
+- [ ] Auto-retrain after N completions: hook in `TaskManager.mark_done` to re-fit
+  `PrioritizerNetwork` every Nth completion without requiring a manual "Train" click
 ### Done (Phases 1-6)
 - [x] Create the server storage system through a sqlite3 database
 - [x] Create the server prioritizer based on the closed-form spec (`FormulaPrioritizer`)
