@@ -1,0 +1,485 @@
+* {
+    box-sizing: border-box;
+}
+
+body {
+    font-family: system-ui, sans-serif;
+    margin: 0;
+    background: #f4f5f7;
+    color: #1f2430;
+}
+
+.hidden {
+    display: none !important;
+}
+
+header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 1rem 1.5rem;
+    background: #1f2430;
+    color: white;
+}
+
+header h1 {
+    margin: 0;
+    font-size: 1.4rem;
+}
+
+#user-bar {
+    display: flex;
+    align-items: center;
+    gap: 0.75rem;
+}
+
+#message-banner {
+    padding: 0.75rem 1.5rem;
+}
+
+#message-banner.error {
+    background: #ffe1e1;
+    color: #9b1c1c;
+}
+
+#message-banner.info {
+    background: #e1f0ff;
+    color: #1c5d9b;
+}
+
+main {
+    max-width: 900px;
+    margin: 1.5rem auto;
+    padding: 0 1rem;
+}
+
+.auth-forms {
+    display: flex;
+    gap: 1.5rem;
+    flex-wrap: wrap;
+    justify-content: center;
+}
+
+form {
+    display: flex;
+    flex-direction: column;
+    gap: 0.5rem;
+    background: white;
+    padding: 1rem;
+    border-radius: 8px;
+    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
+}
+
+input, button, select {
+    padding: 0.5rem;
+    font-size: 1rem;
+}
+
+button {
+    cursor: pointer;
+    border: none;
+    border-radius: 4px;
+    background: #2f6fed;
+    color: white;
+}
+
+button:hover {
+    background: #1f56c4;
+}
+
+#app-nav {
+    display: flex;
+    gap: 0.4rem;
+    margin-top: 1.5rem;
+    border-bottom: 1px solid #e5e7eb;
+    padding-bottom: 0.5rem;
+}
+
+.nav-link {
+    background: none;
+    color: #6b7280;
+    padding: 0.5rem 0.9rem;
+    border-radius: 4px 4px 0 0;
+}
+
+.nav-link:hover {
+    background: #e5e7eb;
+}
+
+.nav-link.active {
+    background: #2f6fed;
+    color: white;
+}
+
+.app-window {
+    margin-top: 1rem;
+}
+
+#tasks-section, #plan-section, #prioritizer-section, #account-section {
+    flex: 1 1 320px;
+    background: white;
+    padding: 1rem;
+    border-radius: 8px;
+    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
+}
+
+#new-task-section {
+    margin-bottom: 1.5rem;
+}
+
+#account-info {
+    margin-bottom: 1rem;
+}
+
+#account-info p {
+    margin: 0.25rem 0;
+}
+
+.window-hint {
+    color: #6b7280;
+    font-size: 0.9rem;
+    margin-top: -0.5rem;
+}
+
+ul {
+    list-style: none;
+    padding: 0;
+    margin: 0;
+}
+
+.task-item, .plan-item {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 0.5rem 0;
+    border-bottom: 1px solid #eee;
+    gap: 0.5rem;
+}
+
+.task-item.done {
+    opacity: 0.5;
+    text-decoration: line-through;
+}
+
+.task-item.overdue {
+    background: #fff1f0;
+    border-left: 3px solid #d9534f;
+    padding-left: 0.5rem;
+}
+
+.plan-item.due-today {
+    background: #fff8e1;
+    border-left: 3px solid #d9a02f;
+    padding-left: 0.5rem;
+}
+
+.due-today-badge {
+    font-size: 0.75rem;
+    color: #9b6a00;
+    font-weight: 600;
+}
+
+.task-info, .plan-item {
+    display: flex;
+    flex-direction: column;
+    gap: 0.15rem;
+}
+
+.category {
+    font-size: 0.8rem;
+    color: #6b7280;
+}
+
+.recurrence-badge {
+    font-size: 0.8rem;
+    color: #2f6fed;
+}
+
+.task-actions {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    width: 11rem;
+    justify-content: end;
+    gap: 0.4rem;
+}
+
+.log-hours-form, .task-buttons-row {
+    display: contents;
+}
+
+.task-actions button {
+    background: #6b7280;
+}
+
+.task-buttons-row .btn-done {
+    background: #2e9e5b;
+}
+
+.task-buttons-row .btn-delete {
+    background: #d9534f;
+}
+
+.log-hours-form input {
+    width: 100%;
+    padding: 0.3rem;
+}
+
+.log-hours-form button {
+    background: #6b7280;
+    padding: 0.3rem 0.6rem;
+}
+
+#train-button {
+    background: #6b7280;
+}
+
+.empty {
+    color: #888;
+    padding: 0.5rem 0;
+}
+
+#plan-form {
+    flex-direction: row;
+    align-items: center;
+    margin-bottom: 0.75rem;
+}
+
+.score {
+    font-size: 0.85rem;
+    color: #888;
+}
+
+.task-toolbar {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.5rem;
+    align-items: center;
+    margin-bottom: 0.75rem;
+}
+
+.task-toolbar input, .task-toolbar select {
+    padding: 0.35rem;
+    font-size: 0.9rem;
+}
+
+.checkbox-label {
+    display: flex;
+    align-items: center;
+    gap: 0.3rem;
+    font-size: 0.9rem;
+}
+
+.task-edit-form {
+    width: 100%;
+    box-shadow: none;
+    padding: 0.5rem 0;
+}
+
+.task-item.editing {
+    flex-direction: column;
+    align-items: stretch;
+}
+
+.cancel-edit {
+    background: #6b7280;
+}
+
+.plan-tabs {
+    display: flex;
+    gap: 0.4rem;
+    margin-bottom: 0.75rem;
+}
+
+.plan-tab {
+    background: #e5e7eb;
+    color: #1f2430;
+}
+
+.plan-tab.active {
+    background: #2f6fed;
+    color: white;
+}
+
+#week-plan-form {
+    flex-direction: row;
+    align-items: center;
+    margin-bottom: 0.75rem;
+}
+
+#week-grid {
+    display: grid;
+    grid-template-columns: repeat(7, minmax(6rem, 1fr));
+    gap: 0.5rem;
+    overflow-x: auto;
+}
+
+.day-card {
+    background: #f8f9fb;
+    border: 1px solid #eee;
+    border-radius: 6px;
+    padding: 0.5rem;
+    display: flex;
+    flex-direction: column;
+    gap: 0.35rem;
+    min-width: 0;
+}
+
+.day-card.is-today {
+    border: 2px solid #d97706;
+    background: #fffbeb;
+}
+
+.day-card-date {
+    font-weight: 600;
+    font-size: 0.85rem;
+}
+
+.day-load-bar {
+    height: 0.4rem;
+    border-radius: 4px;
+    background: #e5e7eb;
+    overflow: hidden;
+}
+
+.day-load-bar-fill {
+    height: 100%;
+    background: #2e9e5b;
+}
+
+.day-load-bar-fill.overloaded {
+    background: #d9534f;
+}
+
+.day-load-label {
+    font-size: 0.75rem;
+    color: #6b7280;
+}
+
+#prioritizer-status-section {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    margin-top: 1rem;
+    flex-wrap: wrap;
+}
+
+#prioritizer-status-section .prioritizer-status {
+    flex-basis: 100%;
+}
+
+#prioritizer-status-section button {
+    padding: 0.5rem 0.75rem;
+}
+
+.prioritizer-status {
+    font-size: 0.85rem;
+    color: #6b7280;
+}
+
+.prioritizer-status.active {
+    color: #2e9e5b;
+}
+
+.prioritizer-status.inactive {
+    color: #6b7280;
+}
+
+.day-entry {
+    font-size: 0.78rem;
+    display: flex;
+    justify-content: space-between;
+    gap: 0.25rem;
+}
+
+.day-deadlines {
+    font-size: 0.72rem;
+    color: #9b1c1c;
+}
+
+.day-empty {
+    font-size: 0.78rem;
+    color: #888;
+}
+
+.day-entry-more {
+    font-size: 0.72rem;
+    color: #888;
+    font-style: italic;
+}
+
+/* Phase 14: weekday header row, muted past-day cards, invisible trailing fillers */
+.week-header-cell {
+    font-size: 0.75rem;
+    font-weight: 600;
+    color: #6b7280;
+    text-align: center;
+    padding: 0.25rem 0;
+}
+
+.day-card-past {
+    background: #f3f4f6;
+    border-color: #e5e7eb;
+    opacity: 0.6;
+}
+
+.day-card-blank {
+    background: transparent;
+    border-color: transparent;
+    box-shadow: none;
+}
+
+/* Phase 12: loading spinners */
+@keyframes spin {
+    to { transform: rotate(360deg); }
+}
+
+.spinner {
+    display: inline-block;
+    width: 1em;
+    height: 1em;
+    border: 2px solid currentColor;
+    border-right-color: transparent;
+    border-radius: 50%;
+    animation: spin 0.7s linear infinite;
+    vertical-align: middle;
+    margin-right: 0.35em;
+}
+
+.loading-state {
+    display: flex;
+    align-items: center;
+    color: #6b7280;
+    padding: 0.5rem 0;
+    font-size: 0.9rem;
+}
+
+button:disabled {
+    opacity: 0.6;
+    cursor: not-allowed;
+}
+
+.danger-button {
+    background: #d9534f;
+}
+
+#delete-account-section {
+    margin-top: 1.5rem;
+    border-top: 1px solid #e5e7eb;
+    padding-top: 1rem;
+}
+
+#delete-account-confirm {
+    margin-top: 0.75rem;
+    display: flex;
+    flex-direction: column;
+    gap: 0.5rem;
+    max-width: 22rem;
+}
+
+#delete-account-confirm input {
+    padding: 0.4rem 0.6rem;
+    border: 1px solid #d1d5db;
+    border-radius: 4px;
+    font-size: 0.95rem;
+    width: 100%;
+}

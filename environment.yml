@@ -1,0 +1,26 @@
+name: priotask
+channels:
+  - conda-forge
+  - defaults
+dependencies:
+  - python>=3.11,<3.13   # tensorflow (Phase 6) has no wheels past 3.12 yet
+  - pip>=25.0
+  - qiskit
+  - matplotlib
+  - notebook
+  - numpy
+  - pandas
+  - tqdm
+  - ipywidgets
+  # Testing tools
+  - mypy
+  - pylint
+  - black
+  - isort
+
+  - pip:
+      - flask
+      # Phase 6: PrioritizerNetwork (per-user neural net)
+      - tensorflow
+      # Browser-driven manual/E2E verification of the client UI
+      - playwright

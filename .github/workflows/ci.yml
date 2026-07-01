@@ -1,0 +1,32 @@
+name: CI
+
+on:
+  push:
+  pull_request:
+  workflow_call:
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up the priotask conda environment
+        uses: conda-incubator/setup-miniconda@v3
+        with:
+          environment-file: environment.yml
+          activate-environment: priotask
+          miniforge-version: latest
+          use-mamba: true
+
+      - name: Install Playwright Chromium
+        shell: bash -el {0}
+        run: python -m playwright install --with-deps chromium
+
+      - name: Server tests
+        shell: bash -el {0}
+        run: python -m unittest discover -s server/test -p "*_test.py"
+
+      - name: Client tests
+        shell: bash -el {0}
+        run: python -m unittest discover -s client/test -p "*_test.py"

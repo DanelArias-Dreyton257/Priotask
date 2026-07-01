@@ -1,0 +1,173 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Priotask</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
+</head>
+<body>
+    <header>
+        <h1>Priotask</h1>
+        <div id="user-bar" class="hidden">
+            <span id="username-display"></span>
+            <button id="logout-button">Log out</button>
+        </div>
+    </header>
+
+    <div id="message-banner" class="hidden"></div>
+
+    <main>
+        <section id="auth-section">
+            <div class="auth-forms">
+                <form id="login-form">
+                    <h2>Log in</h2>
+                    <input type="text" name="username" placeholder="Username" required>
+                    <input type="password" name="password" placeholder="Password" required>
+                    <button type="submit">Log in</button>
+                </form>
+
+                <form id="register-form">
+                    <h2>Register</h2>
+                    <input type="text" name="username" placeholder="Username" required>
+                    <input type="email" name="email" placeholder="Email" required>
+                    <input type="password" name="password" placeholder="Password" required>
+                    <button type="submit">Create account</button>
+                </form>
+            </div>
+        </section>
+
+        <section id="app-section" class="hidden">
+            <nav id="app-nav">
+                <button type="button" class="nav-link" data-window="tasks-window">Tasks</button>
+                <button type="button" class="nav-link active" data-window="timetable-window">Timetable</button>
+                <button type="button" class="nav-link" data-window="prioritizer-window">Prioritizer</button>
+                <button type="button" class="nav-link" data-window="account-window">Account</button>
+            </nav>
+
+            <section id="tasks-window" class="app-window hidden">
+                <section id="new-task-section">
+                    <h2>New task</h2>
+                    <form id="task-form">
+                        <input type="text" name="name" placeholder="Task name" required>
+                        <input type="date" name="deadline" required>
+                        <input type="number" name="expected_duration_h" placeholder="Effort (hours)" min="0" step="0.5" required>
+                        <input type="number" name="importance" placeholder="Importance (1-10)" min="1" max="10" required>
+                        <select name="task_type" id="new-task-type-select"></select>
+                        <input type="text" name="task_type_new" id="new-task-type-new" class="hidden" placeholder="New type">
+                        <select name="task_subtype" id="new-task-subtype-select"></select>
+                        <input type="text" name="task_subtype_new" id="new-task-subtype-new" class="hidden" placeholder="New sub-type">
+                        <select name="recurrence_unit" id="new-task-recurrence-select">
+                            <option value="">Repeats: none</option>
+                            <option value="day">Daily</option>
+                            <option value="week">Weekly</option>
+                            <option value="month">Monthly</option>
+                        </select>
+                        <input type="number" name="recurrence_interval" id="new-task-recurrence-interval" class="hidden" min="1" step="1" value="1" placeholder="Every N">
+                        <input type="date" name="recurrence_end_date" id="new-task-recurrence-end" class="hidden" placeholder="Ends on">
+                        <button type="submit">Add task</button>
+                    </form>
+                </section>
+
+                <section id="tasks-section">
+                    <h2>Your tasks</h2>
+                    <div class="task-toolbar">
+                        <input type="text" id="task-search" placeholder="Search tasks...">
+                        <select id="task-type-filter"></select>
+                        <select id="task-subtype-filter"></select>
+                        <select id="task-sort">
+                            <option value="priority">Sort: priority</option>
+                            <option value="deadline">Sort: deadline</option>
+                            <option value="type">Sort: type</option>
+                        </select>
+                        <label class="checkbox-label"><input type="checkbox" id="show-done-checkbox"> Show completed</label>
+                    </div>
+                    <ul id="task-list"></ul>
+                </section>
+            </section>
+
+            <section id="timetable-window" class="app-window">
+                <section id="plan-section">
+                    <h2>Timetable</h2>
+                    <div class="plan-tabs">
+                        <button type="button" id="plan-tab-today" class="plan-tab active">Today</button>
+                        <button type="button" id="plan-tab-week" class="plan-tab">This week</button>
+                        <button type="button" id="plan-tab-month" class="plan-tab">This month</button>
+                    </div>
+
+                    <div id="plan-today-view">
+                        <form id="plan-form">
+                            <label for="hours-input">Hours available today</label>
+                            <input type="number" id="hours-input" min="0" step="0.5" value="6">
+                            <button type="submit">Refresh plan</button>
+                        </form>
+                        <ul id="plan-list"></ul>
+                    </div>
+
+                    <div id="plan-week-view" class="hidden">
+                        <form id="week-plan-form">
+                            <label for="week-hours-input">Hours available per day</label>
+                            <input type="number" id="week-hours-input" min="0" step="0.5" value="6">
+                            <button type="submit">Refresh week</button>
+                        </form>
+                        <div id="week-grid"></div>
+                    </div>
+                </section>
+            </section>
+
+            <section id="prioritizer-window" class="app-window hidden">
+                <section id="prioritizer-section">
+                    <h2>Prioritizer</h2>
+                    <p class="window-hint">
+                        Your priority model learns a correction on top of the base formula score from your
+                        completed tasks. Train it once you've completed a few tasks to personalize ranking.
+                    </p>
+                    <div id="prioritizer-status-section">
+                        <span id="prioritizer-status" class="prioritizer-status">Checking priority model status...</span>
+                        <button id="train-button" type="button">Train priority model</button>
+                        <button id="reset-model-button" type="button" class="hidden">Reset model</button>
+                    </div>
+                </section>
+            </section>
+
+            <section id="account-window" class="app-window hidden">
+                <section id="account-section">
+                    <h2>Account</h2>
+                    <div id="account-info">
+                        <p><strong>Username:</strong> <span id="account-username"></span></p>
+                        <p><strong>Email:</strong> <span id="account-email"></span></p>
+                    </div>
+
+                    <form id="update-email-form">
+                        <h3>Update email</h3>
+                        <input type="email" name="email" placeholder="New email" required>
+                        <button type="submit">Update email</button>
+                    </form>
+
+                    <form id="change-password-form">
+                        <h3>Change password</h3>
+                        <input type="password" name="current_password" placeholder="Current password" required>
+                        <input type="password" name="new_password" placeholder="New password" required>
+                        <button type="submit">Change password</button>
+                    </form>
+
+                    <div id="delete-account-section">
+                        <h3>Delete account</h3>
+                        <p class="window-hint">This permanently deletes your account, all your tasks, and your trained priority model. This cannot be undone.</p>
+                        <button id="delete-account-start-button" type="button" class="danger-button">Delete account</button>
+                        <div id="delete-account-confirm" class="hidden">
+                            <p>Type <strong>DELETE</strong> to confirm:</p>
+                            <input type="text" id="delete-account-confirm-input" placeholder="DELETE" autocomplete="off">
+                            <button id="delete-account-confirm-button" type="button" class="danger-button" disabled>Yes, delete my account</button>
+                            <button id="delete-account-cancel-button" type="button">Cancel</button>
+                        </div>
+                    </div>
+                </section>
+            </section>
+        </section>
+    </main>
+
+    <script>window.PRIOTASK_API_BASE_URL = {{ api_base_url | tojson }};</script>
+    <script type="module" src="{{ url_for('static', filename='js/app.js') }}"></script>
+</body>
+</html>

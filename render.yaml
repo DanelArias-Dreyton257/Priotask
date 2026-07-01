@@ -1,0 +1,10 @@
+services:
+  - type: web
+    name: priotask-api
+    runtime: python
+    plan: free
+    branch: main
+    autoDeploy: false # deploys are triggered only via the Deploy Hook, from .github/workflows/release.yml
+    buildCommand: pip install -r server/requirements-prod.txt
+    startCommand: gunicorn server.wsgi:app --bind 0.0.0.0:$PORT
+    healthCheckPath: /api/health
