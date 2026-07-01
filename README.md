@@ -5,17 +5,24 @@ Priotask helps manage and prioritize tasks for effective time management, allowi
 Everything needed to run Phases 1-13 locally and try the app end to end.
 
 ### 1. Set up the environment
+The easiest path is the install script (requires conda on `$PATH`):
+```
+./scripts/install.sh
+```
+This creates the `priotask` conda environment, downloads the Playwright Chromium browser (used
+by the JS test suite), and initialises `priotask.db`. Run once after cloning the repo.
+
+Or manually, if you prefer step-by-step control:
 ```
 conda env create -f environment.yml
 conda activate priotask
+python -m playwright install chromium
 ```
-If the environment already exists and `environment.yml` changed since you created it:
-```
-conda env update -f environment.yml --prune
-```
-Phase 6 pins `python<3.13` (TensorFlow/Keras don't ship wheels past 3.12 yet). `conda env
-update` won't downgrade an already-created env's Python version — if yours predates this pin,
-recreate it instead: `conda env remove -n priotask && conda env create -f environment.yml`.
+If the environment already exists and `environment.yml` changed since you created it, use
+`./scripts/update.sh` (or `conda env update -f environment.yml --prune` manually). Phase 6 pins
+`python<3.13` (TensorFlow/Keras don't ship wheels past 3.12 yet) — `conda env update` won't
+downgrade an existing env's Python version, so if yours predates this pin recreate it instead:
+`conda env remove -n priotask && conda env create -f environment.yml`.
 
 ### 2. Run the server (API)
 From the repo root:
@@ -69,10 +76,13 @@ Open `http://localhost:5500` in a browser:
    ("Due: ..."). "Hours available per day" + **Refresh week** re-fetches it with a different daily
    budget.
 7. The **Prioritizer** window's **Train priority model** fits the user's `PrioritizerNetwork`
-   (Phase 6) on their task history so far — it reports whether there was enough completion history
-   to actually train on. The status line next to it (Phase 10) shows whether a trained model is
-   currently active and when it was last trained, without itself triggering training; **Reset
-   model** (shown once a model is active) discards it and reverts to formula-only scoring.
+   (Phase 6) on their task history so far — the button is disabled and shows a spinner while
+   training is in flight (Phase 12), since the Keras fit can take a few seconds; it reports
+   whether there was enough completion history to actually train on once it finishes. The status
+   line next to it (Phase 10) shows whether a trained model is currently active and when it was
+   last trained, without itself triggering training; **Reset model** (shown once a model is
+   active) discards it and reverts to formula-only scoring. The **Timetable** window's plan list
+   and week grid also show a spinner while their server requests are in-flight (Phase 12).
 8. The **Account** window (Phase 13) shows the logged-in user's username/email, and lets them
    update their email or change their password (the current password is verified server-side
    before the change is accepted).
