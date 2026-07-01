@@ -1,3 +1,8 @@
+"""
+Task REST endpoints: CRUD (/tasks), completion (/tasks/<id>/complete) and
+partial-hour logging (/tasks/<id>/log-hours). All routes are scoped to the
+authenticated user via require_auth.
+"""
 from dataclasses import asdict
 from datetime import datetime
 

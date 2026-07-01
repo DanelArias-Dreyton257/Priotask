@@ -1,3 +1,8 @@
+"""
+Plan endpoints: GET /plan/today (DailyPlanner single-day budget, Phase 3) and
+GET /plan/week (multi-day simulation, Phase 9). Both are scoped to the
+authenticated user and accept an optional hours query parameter.
+"""
 from dataclasses import asdict
 
 from flask import Blueprint, current_app, g, jsonify, request

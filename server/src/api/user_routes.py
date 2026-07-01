@@ -1,3 +1,9 @@
+"""
+User endpoints: POST /users (register), POST /auth/login, POST /auth/logout,
+GET|PUT /users/me (profile + email update), POST /users/me/password (change
+password with current-password verification). Phase 13 adds the /users/me
+routes; auth routes are Phase 4.
+"""
 from dataclasses import asdict
 
 from flask import Blueprint, current_app, g, jsonify, request

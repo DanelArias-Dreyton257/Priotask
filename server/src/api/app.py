@@ -1,3 +1,8 @@
+"""
+Flask application factory (create_app). Wires the DB, DAOs, managers and
+services together, registers all API blueprints, and enables CORS for the
+browser client on a different origin/port.
+"""
 from flask import Flask, request
 
 from server.src.api.plan_routes import plan_bp

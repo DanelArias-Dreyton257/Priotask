@@ -1,3 +1,8 @@
+"""
+CRUD layer between TaskDAO/CompletionSnapshotDAO and the domain. Handles
+domain<->DTO mapping, partial-hour logging (Phase 7), completion snapshots
+(Phase 7), and recurring-task spawning (Phase 11).
+"""
 import json
 import sqlite3
 from datetime import datetime

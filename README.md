@@ -82,15 +82,25 @@ Open `http://localhost:5500` in a browser:
 python -m unittest discover -s server/test -p "*_test.py"
 python -m unittest discover -s client/test -p "*_test.py"
 ```
-These cover the server and the client's app shell, but there's no JS unit test runner yet (Phase
-12). Phase 8's client UI was verified manually with a Playwright-driven browser session against
-the running app instead — `playwright` is in `environment.yml` for that purpose; run
-`python -m playwright install chromium` once after creating/updating the env if you want to do
-the same.
+The first command covers the server (Prioritizer, DailyPlanner, TaskManager, UserManager, API —
+117 tests). The second covers the client: `Client_test.py` (smoke test that the page and static
+assets are served) and `Js_test.py` (30 Playwright-driven tests for `views.js` and `api.js` —
+Phase 12). The Playwright tests spin up the Flask client on a local ephemeral port and exercise
+the JS modules in a headless Chromium browser; they require `python -m playwright install
+chromium` once (the `scripts/install.sh` / `scripts/update.sh` scripts do this automatically).
 
 ## Scripts
 Bash scripts in `scripts/` (run from the repo root, or anywhere — they `cd` to the repo root
 themselves):
+- `./scripts/install.sh` — first-time setup: creates the `priotask` conda environment from
+  `environment.yml`, downloads the Playwright Chromium browser, and initialises `priotask.db`.
+  Run once after cloning the repo.
+- `./scripts/update.sh` — updates the conda environment after a `git pull`: runs `conda env
+  update --prune`, re-downloads Playwright Chromium if the pinned version changed, and applies
+  any pending DB column migrations by starting the server briefly.
+- `./scripts/uninstall.sh [path]` — removes the `priotask` conda environment and (optionally,
+  after a prompt) deletes the database. The repo directory itself is not removed. `FORCE=1`
+  skips all prompts.
 - `./scripts/run.sh` — starts the server and the client together in one terminal; `Ctrl+C` stops
   both.
 - `./scripts/reset_db.sh [path]` — deletes the SQLite file (`priotask.db` by default), wiping
@@ -720,12 +730,24 @@ roadmap phase that owns them (see above for full descriptions).
 - [x] Completing a recurring task spawns its next occurrence instead of just marking it done
 - [x] "Repeats" control on the client task form, plus a recurring-task indicator in the task list
 ### Phase 12 — Hardening & polish (in progress)
-- [ ] JS unit tests for `views.js`/`app.js`/`api.js` (Playwright-driven `client/test/Js_test.py`)
-- [ ] Create the documentation for the server
-- [ ] Create the documentation for the client
-- [ ] Create the installation script
-- [ ] Create the uninstallation script
-- [ ] Create the update script
+- [x] JS unit tests for `views.js`/`app.js`/`api.js` — Playwright-driven `client/test/Js_test.py`;
+  30 tests across 5 test classes exercising spinners, message banner, category-field wiring/reading,
+  recurrence-field wiring/reading, filter-select population, `renderPlan` (including the due-today
+  badge), and `ApiClient` error handling + URL construction (via `page.route()` interception). The
+  Flask client app is served on an ephemeral port; each test gets a fresh browser page so state
+  never bleeds between tests. Requires `python -m playwright install chromium` once (the install
+  script does this automatically).
+- [x] Create the documentation for the server — module-level docstrings added to
+  `TaskManager`, `UserManager`, `app.py`, `task_routes`, `plan_routes`, `prioritizer_routes`,
+  `user_routes`; existing class/method docstrings unchanged.
+- [x] Create the documentation for the client — all four JS modules already carried comment
+  headers from Phase 5; `session.js`, `api.js`, `views.js`, `app.js` headers reviewed and kept.
+- [x] Create the installation script (`scripts/install.sh`) — creates the conda environment,
+  downloads Playwright Chromium, and runs a brief server start to initialise `priotask.db`.
+- [x] Create the uninstallation script (`scripts/uninstall.sh`) — removes the conda environment
+  and optionally deletes the database (prompts unless `FORCE=1`).
+- [x] Create the update script (`scripts/update.sh`) — updates the conda environment, re-runs
+  `playwright install chromium`, and starts the server briefly to apply any pending migrations.
 - [x] Show a spinner on the Train button (and disable it) while `POST /api/prioritizer/train` is
   in-flight (`app.js` + `Views.setTrainButtonLoading`, `views.js` + CSS `@keyframes spin`)
 - [x] Show a spinner in the Timetable's Today view (`#plan-list`) while `GET /api/plan/today` is

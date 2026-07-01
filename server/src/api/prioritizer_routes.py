@@ -1,3 +1,9 @@
+"""
+Prioritizer endpoints (Phase 6 + 10): POST /prioritizer/train (fit the user's
+PrioritizerNetwork), GET /prioritizer/status (trained?/updated_at), and
+DELETE /prioritizer/model (reset to formula-only scoring). All scoped to the
+authenticated user via require_auth.
+"""
 from flask import Blueprint, current_app, g, jsonify
 
 from server.src.api.auth import require_auth

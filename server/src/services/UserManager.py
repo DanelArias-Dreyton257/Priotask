@@ -1,3 +1,8 @@
+"""
+CRUD layer between UserDAO and the domain. Owns user creation (PBKDF2-HMAC-
+SHA256 password hashing), lookup, email/password updates (Phase 13), and
+domain<->DTO mapping.
+"""
 import hashlib
 import hmac
 import os
