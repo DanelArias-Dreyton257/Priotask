@@ -30,6 +30,11 @@ class ApiTest(unittest.TestCase):
         body.update(overrides)
         return self.client.post("/api/tasks", json=body, headers=self._auth_headers(token))
 
+    def test_health_endpoint_reports_ok(self):
+        response = self.client.get("/api/health")
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.get_json(), {"status": "ok"})
+
     def test_register_creates_user_without_password(self):
         response = self.client.post(
             "/api/users", json={"username": "alice", "password": "s3cret!!", "email": "alice@example.com"},

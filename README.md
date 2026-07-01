@@ -1,4 +1,7 @@
 # Priotask
+[![CI](https://github.com/DanelArias-Dreyton257/Priotask/actions/workflows/ci.yml/badge.svg)](https://github.com/DanelArias-Dreyton257/Priotask/actions/workflows/ci.yml)
+[![Release](https://img.shields.io/github/v/release/DanelArias-Dreyton257/Priotask)](https://github.com/DanelArias-Dreyton257/Priotask/releases/latest)
+
 Priotask helps you manage and prioritize tasks for effective time management. Register your tasks and the app figures out what to work on today — not just ranked by importance, but converted into a concrete **hours-to-spend** recommendation per task that fits within your available time budget.
 
 ## Getting Started
@@ -85,6 +88,53 @@ Bash scripts in `scripts/` (run from the repo root, or anywhere — they `cd` to
   month, different efforts/importances/types, a couple already completed, one partially logged)
   for manually trying out the UI. No-op if `admin` already has tasks.
 
+## Deployment
+`main` is the deployed branch. Every push and pull request runs the CI workflow
+(`.github/workflows/ci.yml`): sets up the `priotask` conda environment exactly as
+described above, then runs both test suites. Pushing a tag matching `vX.Y.Z` runs
+the release workflow (`.github/workflows/release.yml`), which re-runs CI as a
+gate and, only if it's green:
+- **Client**: builds `client/src/webapp/{templates,static}` into a static
+  `dist/` folder via `scripts/build_static_site.py` (relative asset paths, and
+  `PRIOTASK_API_BASE_URL` baked in from the `PROD_API_BASE_URL` repo variable)
+  and publishes it to **GitHub Pages**.
+- **Server**: calls Render's deploy hook (`RENDER_DEPLOY_HOOK_URL` repo secret)
+  to redeploy the Flask API — described by `render.yaml` — on **Render.com**.
+- Creates a GitHub Release for the tag with auto-generated notes.
+
+### Releasing a new version
+1. Merge `development` into `main` via a pull request.
+2. Update [`CHANGELOG.md`](CHANGELOG.md) (move `[Unreleased]` items under a new
+   version heading).
+3. Tag `main` and push the tag: `git tag vX.Y.Z && git push origin vX.Y.Z`.
+
+### One-time environment setup
+These are one-off steps in the GitHub/Render UIs, not run by any workflow:
+1. **GitHub Pages** requires GitHub Pro/Team/Enterprise on a private repo (Free
+   plan can't publish Pages from a private repo). Repo Settings → Pages →
+   Source = "GitHub Actions".
+2. Create a Render web service from this repo (branch `main`); it reads
+   `render.yaml`. Turn off Render's own auto-deploy-on-push in its dashboard —
+   deploys are meant to happen only through the tag-triggered workflow above.
+3. Add the Render service's public URL as the repo variable `PROD_API_BASE_URL`
+   (Settings → Secrets and variables → Actions → Variables).
+4. Add the Render service's Deploy Hook URL as the repo secret
+   `RENDER_DEPLOY_HOOK_URL` (Settings → Secrets and variables → Actions →
+   Secrets).
+
+### Known limitation
+Render's free tier has an ephemeral filesystem (no persistent disk without a
+paid instance type), so `priotask.db` resets on every redeploy and likely on
+every spin-down/spin-up cycle after 15 minutes of inactivity. Fine for
+demoing v1.0.0; not a place to keep real data yet — see
+[Planned Improvements](#technical--operational).
+
+## Versioning
+Priotask follows [Semantic Versioning](https://semver.org/) (`MAJOR.MINOR.PATCH`).
+Releases are git tags (`vX.Y.Z`); see [`CHANGELOG.md`](CHANGELOG.md) for what
+changed in each one, and [Releases](https://github.com/DanelArias-Dreyton257/Priotask/releases)
+for the published artifacts.
+
 ## Architecture
 
 ### Overview
@@ -110,6 +160,12 @@ Each user gets their own model, persisted through `ModelStore` (a model-agnostic
 Priotask/
 ├── tareas_spec.pdf          # Technical spec: the formulas behind FormulaPrioritizer
 ├── environment.yml          # Conda environment (Python, lint/format/type-check tools)
+├── render.yaml              # Render Blueprint: how the API is deployed
+├── CHANGELOG.md             # Keep a Changelog + SemVer release notes
+├── .github/workflows/
+│   ├── ci.yml               # Tests on every push/PR; reused by release.yml
+│   └── release.yml          # On `vX.Y.Z` tag push: test, deploy, GitHub Release
+├── scripts/build_static_site.py  # Builds client/ into dist/ for GitHub Pages
 │
 ├── client/
 │   ├── src/
@@ -129,6 +185,8 @@ Priotask/
 │       └── Js_test.py       # 42 Playwright-driven JS unit tests
 │
 └── server/
+    ├── wsgi.py              # gunicorn entry point for production (server.wsgi:app)
+    ├── requirements-prod.txt  # Lean runtime deps for the Render deploy
     ├── src/
     │   ├── Server.py        # Entry point: runs the Flask app (create_app)
     │   ├── api/
@@ -266,6 +324,8 @@ Possible next steps, roughly ordered from lowest to highest complexity.
 - **Better training signal** — richer negative-example heuristics beyond the current "open tasks at completion time" proxy; for example, weighting by how close a skipped task was to its own deadline.
 
 ### Technical / Operational
+- **Persistent/managed database** — the deployed Render API currently uses the free tier's ephemeral filesystem (see [Known limitation](#known-limitation)); move `priotask.db` to a persistent disk or a managed Postgres once the app holds real user data.
+- **CI lint/type-check gate** — `black`/`isort`/`pylint`/`mypy` are already dev dependencies in `environment.yml` but aren't yet enforced in CI; the codebase needs a formatting pass before that gate can be added without immediately going red.
 - **Docker / docker-compose** — container-based setup so conda isn't required; simplifies deployment on a remote server.
 - **OpenAPI / Swagger documentation** — auto-generated, browsable API docs for the REST endpoints.
 - **Rate limiting** — protect the Flask API from abuse on a public deployment.

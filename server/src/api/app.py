@@ -74,6 +74,11 @@ def create_app(db_path: str = "priotask.db") -> Flask:
     app.register_blueprint(plan_bp, url_prefix="/api")
     app.register_blueprint(prioritizer_bp, url_prefix="/api")
 
+    @app.get("/api/health")
+    def health():
+        # Hit by Render's health check to confirm the deploy is up.
+        return {"status": "ok"}, 200
+
     _enable_cors(app)
     return app
 

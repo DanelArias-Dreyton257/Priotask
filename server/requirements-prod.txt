@@ -1,0 +1,8 @@
+# Lean runtime dependencies for the production Flask API (Render deploy).
+# Local development uses environment.yml instead, which also pulls in
+# dev-only tooling (black/isort/mypy/pylint) and notebook/qiskit/matplotlib
+# left over from earlier phases that the server doesn't actually import.
+flask
+tensorflow
+numpy
+gunicorn

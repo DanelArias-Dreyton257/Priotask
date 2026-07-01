@@ -64,6 +64,9 @@ db.sqlite3-journal
 # Priotask sqlite database
 *.db
 
+# Static site build output (scripts/build_static_site.py)
+/dist/
+
 # Flask stuff:
 instance/
 .webassets-cache
