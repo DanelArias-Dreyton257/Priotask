@@ -12,7 +12,7 @@ class ApiTest(unittest.TestCase):
         self.app = create_app(":memory:")
         self.client = self.app.test_client()
 
-    def _register_and_login(self, username="alice", password="s3cret", email="alice@example.com"):
+    def _register_and_login(self, username="alice", password="s3cret!!", email="alice@example.com"):
         self.client.post("/api/users", json={"username": username, "password": password, "email": email})
         response = self.client.post("/api/auth/login", json={"username": username, "password": password})
         return response.get_json()["token"]
@@ -32,7 +32,7 @@ class ApiTest(unittest.TestCase):
 
     def test_register_creates_user_without_password(self):
         response = self.client.post(
-            "/api/users", json={"username": "alice", "password": "s3cret", "email": "alice@example.com"},
+            "/api/users", json={"username": "alice", "password": "s3cret!!", "email": "alice@example.com"},
         )
         self.assertEqual(response.status_code, 201)
         body = response.get_json()
@@ -41,12 +41,12 @@ class ApiTest(unittest.TestCase):
         self.assertNotIn("password_hash", body)
 
     def test_register_rejects_duplicate_username(self):
-        self.client.post("/api/users", json={"username": "alice", "password": "s3cret", "email": "a@x.com"})
-        response = self.client.post("/api/users", json={"username": "alice", "password": "other", "email": "b@x.com"})
+        self.client.post("/api/users", json={"username": "alice", "password": "s3cret!!", "email": "a@x.com"})
+        response = self.client.post("/api/users", json={"username": "alice", "password": "different!!", "email": "b@x.com"})
         self.assertEqual(response.status_code, 409)
 
     def test_login_rejects_wrong_password(self):
-        self.client.post("/api/users", json={"username": "alice", "password": "s3cret", "email": "a@x.com"})
+        self.client.post("/api/users", json={"username": "alice", "password": "s3cret!!", "email": "a@x.com"})
         response = self.client.post("/api/auth/login", json={"username": "alice", "password": "wrong"})
         self.assertEqual(response.status_code, 401)
 
@@ -65,16 +65,16 @@ class ApiTest(unittest.TestCase):
         self.assertEqual(listed.get_json()[0]["name"], "write report")
 
     def test_users_only_see_their_own_tasks(self):
-        token_a = self._register_and_login("alice", "s3cret", "a@x.com")
-        token_b = self._register_and_login("bob", "s3cret", "b@x.com")
+        token_a = self._register_and_login("alice", "s3cret!!", "a@x.com")
+        token_b = self._register_and_login("bob", "s3cret!!", "b@x.com")
         self._create_task(token_a)
 
         listed_b = self.client.get("/api/tasks", headers=self._auth_headers(token_b))
         self.assertEqual(listed_b.get_json(), [])
 
     def test_cannot_access_another_users_task(self):
-        token_a = self._register_and_login("alice", "s3cret", "a@x.com")
-        token_b = self._register_and_login("bob", "s3cret", "b@x.com")
+        token_a = self._register_and_login("alice", "s3cret!!", "a@x.com")
+        token_b = self._register_and_login("bob", "s3cret!!", "b@x.com")
         task_id = self._create_task(token_a).get_json()["task_id"]
 
         response = self.client.get(f"/api/tasks/{task_id}", headers=self._auth_headers(token_b))
@@ -145,8 +145,8 @@ class ApiTest(unittest.TestCase):
         self.assertEqual(response.status_code, 400)
 
     def test_log_hours_on_another_users_task_404s(self):
-        token_a = self._register_and_login("alice", "s3cret", "a@x.com")
-        token_b = self._register_and_login("bob", "s3cret", "b@x.com")
+        token_a = self._register_and_login("alice", "s3cret!!", "a@x.com")
+        token_b = self._register_and_login("bob", "s3cret!!", "b@x.com")
         task_id = self._create_task(token_a).get_json()["task_id"]
 
         response = self.client.post(
@@ -304,7 +304,7 @@ class ApiTest(unittest.TestCase):
 
         response = self.client.post(
             "/api/users/me/password",
-            json={"current_password": "s3cret", "new_password": "new-s3cret"},
+            json={"current_password": "s3cret!!", "new_password": "new-s3cret"},
             headers=self._auth_headers(token),
         )
         self.assertEqual(response.status_code, 204)
@@ -325,7 +325,7 @@ class ApiTest(unittest.TestCase):
     def test_change_password_rejects_missing_fields(self):
         token = self._register_and_login()
         response = self.client.post(
-            "/api/users/me/password", json={"current_password": "s3cret"}, headers=self._auth_headers(token),
+            "/api/users/me/password", json={"current_password": "s3cret!!"}, headers=self._auth_headers(token),
         )
         self.assertEqual(response.status_code, 400)
 
@@ -367,6 +367,125 @@ class ApiTest(unittest.TestCase):
             .status_code,
             401,
         )
+
+    # --- Phase 15: delete account ---
+
+    def test_delete_account_returns_204(self):
+        token = self._register_and_login()
+        response = self.client.delete("/api/users/me", headers=self._auth_headers(token))
+        self.assertEqual(response.status_code, 204)
+
+    def test_delete_account_revokes_token(self):
+        token = self._register_and_login()
+        self.client.delete("/api/users/me", headers=self._auth_headers(token))
+        response = self.client.get("/api/tasks", headers=self._auth_headers(token))
+        self.assertEqual(response.status_code, 401)
+
+    def test_delete_account_cascade_removes_tasks(self):
+        token = self._register_and_login()
+        task_id = self._create_task(token).get_json()["task_id"]
+
+        self.client.delete("/api/users/me", headers=self._auth_headers(token))
+
+        # Re-register same username to confirm tasks are gone (not owned by the new account).
+        new_token = self._register_and_login()
+        listed = self.client.get("/api/tasks", headers=self._auth_headers(new_token))
+        self.assertEqual(listed.get_json(), [])
+
+    def test_delete_account_requires_auth(self):
+        self.assertEqual(self.client.delete("/api/users/me").status_code, 401)
+
+    # --- Phase 15: input validation ---
+
+    def test_register_rejects_short_username(self):
+        response = self.client.post(
+            "/api/users", json={"username": "ab", "password": "longenough", "email": "a@b.com"},
+        )
+        self.assertEqual(response.status_code, 400)
+        self.assertIn("username", response.get_json()["error"])
+
+    def test_register_rejects_short_password(self):
+        response = self.client.post(
+            "/api/users", json={"username": "alice", "password": "short", "email": "a@b.com"},
+        )
+        self.assertEqual(response.status_code, 400)
+        self.assertIn("password", response.get_json()["error"])
+
+    def test_change_password_rejects_short_new_password(self):
+        token = self._register_and_login()
+        response = self.client.post(
+            "/api/users/me/password",
+            json={"current_password": "s3cret!!", "new_password": "tiny"},
+            headers=self._auth_headers(token),
+        )
+        self.assertEqual(response.status_code, 400)
+        self.assertIn("password", response.get_json()["error"])
+
+    # --- Phase 15: session expiry ---
+
+    def test_expired_session_is_rejected(self):
+        token = self._register_and_login()
+        # Directly set the session to expired in the DB.
+        self.app.auth_service.session_dao.update_expires_at(token, "2000-01-01T00:00:00+00:00")
+        response = self.client.get("/api/tasks", headers=self._auth_headers(token))
+        self.assertEqual(response.status_code, 401)
+
+    def test_session_is_extended_on_each_resolve(self):
+        token = self._register_and_login()
+        # Record the expiry right after login.
+        row_before = self.app.auth_service.session_dao.get_session(token)
+        expires_before = row_before["expires_at"]
+        # Make a request that calls resolve_token.
+        self.client.get("/api/tasks", headers=self._auth_headers(token))
+        row_after = self.app.auth_service.session_dao.get_session(token)
+        # expires_at must have been updated (>= original, as a string comparison on ISO timestamps).
+        self.assertGreaterEqual(row_after["expires_at"], expires_before)
+
+    def test_multiple_logins_issue_distinct_tokens(self):
+        self._register_and_login()
+        token_a = self.app.auth_service.session_dao.db.execute(
+            "SELECT token FROM sessions"
+        ).fetchall()
+        self.client.post("/api/auth/login", json={"username": "alice", "password": "s3cret!!"})
+        token_b = self.app.auth_service.session_dao.db.execute(
+            "SELECT token FROM sessions"
+        ).fetchall()
+        self.assertGreater(len(token_b), len(token_a))
+
+    # --- Phase 15: auto-retrain callback ---
+
+    def test_auto_retrain_callback_fires_at_threshold(self):
+        from server.src.services.TaskManager import AUTO_RETRAIN_EVERY
+        called_for = []
+
+        def capture(user_id):
+            called_for.append(user_id)
+
+        self.app.task_manager._on_completion = capture
+
+        token = self._register_and_login()
+        # Complete exactly AUTO_RETRAIN_EVERY tasks.
+        for _ in range(AUTO_RETRAIN_EVERY):
+            task_id = self._create_task(token).get_json()["task_id"]
+            self.client.post(f"/api/tasks/{task_id}/complete", headers=self._auth_headers(token))
+
+        self.assertEqual(len(called_for), 1)
+
+    def test_auto_retrain_callback_not_fired_before_threshold(self):
+        from server.src.services.TaskManager import AUTO_RETRAIN_EVERY
+        called_for = []
+
+        def capture(user_id):
+            called_for.append(user_id)
+
+        self.app.task_manager._on_completion = capture
+
+        token = self._register_and_login()
+        for _ in range(AUTO_RETRAIN_EVERY - 1):
+            task_id = self._create_task(token).get_json()["task_id"]
+            self.client.post(f"/api/tasks/{task_id}/complete", headers=self._auth_headers(token))
+
+        self.assertEqual(len(called_for), 0)
 
 
 if __name__ == "__main__":

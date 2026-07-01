@@ -75,6 +75,11 @@ class UserManagerTest(unittest.TestCase):
         self.manager.delete_user("erin")
         self.assertIsNone(self.manager.get_user_by_username("erin"))
 
+    def test_delete_user_by_id_removes_it(self):
+        created = self.manager.create_user("julia", "s3cret", "julia@example.com")
+        self.manager.delete_user_by_id(created.user_id)
+        self.assertIsNone(self.manager.get_user_by_id(created.user_id))
+
 
 if __name__ == "__main__":
     unittest.main()
