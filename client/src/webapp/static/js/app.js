@@ -32,11 +32,10 @@ async function refreshTasksAndPlan() {
 async function refreshWeekPlan() {
     Views.showWeekPlanLoading();
     const hours = document.getElementById("week-hours-input").value || undefined;
-    // Request only today→Sunday so the grid stays exactly one row (Mon–Sun).
-    // renderWeekPlan fills earlier columns with muted past-day cards.
-    const todayOffset = (new Date().getDay() + 6) % 7; // Mon=0, Sun=6
-    const daysThisWeek = 7 - todayOffset;
-    const days = await api.getWeekPlan(hours, daysThisWeek);
+    // 7 rolling days: today → today+6. renderWeekPlan splits them into
+    // this-week and next-week buckets and places next-week cards first so
+    // today always lands in its real Mon–Sun column.
+    const days = await api.getWeekPlan(hours, 7);
     Views.renderWeekPlan(days);
 }
 

@@ -205,42 +205,70 @@ export const Views = {
         }
     },
 
-    // Phase 9 / Phase 14: a day-card grid with fixed Mon-Sun column headers.
-    // Earlier days in the current calendar week are shown as muted past-day
-    // cards (greyed out, date label only) so "today" always lands in its real
-    // weekday column and the grid stays exactly one row in week mode.
-    // monthMode: invisible trailing blank cards complete the last partial row.
+    // Phase 9 / Phase 14: rolling 7-day grid (week mode) or calendar month
+    // grid (monthMode).
+    //
+    // Week mode: Mon–Sun header row, always exactly 7 day cards in one row.
+    // The server returns 7 rolling days from today (today→today+6). Days that
+    // spill into the next calendar week are placed FIRST (columns Mon→today-1)
+    // as muted "next week preview" cards so today always lands in its real
+    // weekday column. Example layout for Thursday:
+    //   [next Mon muted] [next Tue muted] [next Wed muted] [Thu today] [Fri] [Sat] [Sun]
+    //
+    // Month mode: Mon–Sun header row, muted synthetic cards for earlier days
+    // in the first week (no server data for past days), real day cards for
+    // today→end of month, then invisible trailing blanks to complete the last
+    // partial row so the grid is always rectangular.
     renderWeekPlan(days, { monthMode = false } = {}) {
         const grid = document.getElementById("week-grid");
         grid.innerHTML = "";
 
-        const WEEKDAYS = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"];
-        for (const label of WEEKDAYS) {
+        const todayDate = new Date();
+        const todayOffset = (todayDate.getDay() + 6) % 7; // Mon=0, Sun=6
+        const today = todayDate.toISOString().slice(0, 10);
+
+        // Mon–Sun headers (both modes)
+        for (const label of ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"]) {
             const header = document.createElement("div");
             header.className = "week-header-cell";
             header.textContent = label;
             grid.appendChild(header);
         }
 
-        // Muted past-day cards for Mon up to (but not including) today.
-        const todayDate = new Date();
-        const todayOffset = (todayDate.getDay() + 6) % 7; // Mon=0, Sun=6
-        for (let i = 0; i < todayOffset; i++) {
-            const past = new Date(todayDate);
-            past.setDate(past.getDate() - (todayOffset - i));
-            grid.appendChild(pastDayCard(past.toISOString().slice(0, 10)));
-        }
-
-        const today = todayDate.toISOString().slice(0, 10);
-        for (const day of days) {
-            grid.appendChild(buildDayCard(day, day.date === today));
-        }
-
         if (monthMode) {
+            // Muted prefix cards for Mon–(today-1) in the month's first week.
+            for (let i = 0; i < todayOffset; i++) {
+                const past = new Date(todayDate);
+                past.setDate(past.getDate() - (todayOffset - i));
+                grid.appendChild(pastDayCard(past.toISOString().slice(0, 10)));
+            }
+            for (const day of days) {
+                grid.appendChild(buildDayCard(day, day.date === today));
+            }
             const totalDataCells = todayOffset + days.length;
             const trailing = (7 - (totalDataCells % 7)) % 7;
             for (let i = 0; i < trailing; i++) {
                 grid.appendChild(blankDayCard());
+            }
+        } else {
+            // Sunday of the current calendar week — days beyond it are next week.
+            const sundayDate = new Date(todayDate);
+            sundayDate.setDate(sundayDate.getDate() + (6 - todayOffset));
+            const sundayStr = sundayDate.toISOString().slice(0, 10);
+
+            // Split: this week (today→Sunday) and next week overflow (Mon→Wed_next).
+            const thisWeek = days.filter((d) => d.date <= sundayStr);
+            const nextWeek = days.filter((d) => d.date > sundayStr);
+
+            // Next-week days go FIRST so they occupy columns 1→todayOffset
+            // and today lands in column todayOffset+1 (its real weekday slot).
+            for (const day of nextWeek) {
+                const card = buildDayCard(day, false);
+                card.classList.add("day-card-past");
+                grid.appendChild(card);
+            }
+            for (const day of thisWeek) {
+                grid.appendChild(buildDayCard(day, day.date === today));
             }
         }
     },
@@ -399,16 +427,18 @@ function buildEditItem(task, categories, onSaveEdit, onCancelEdit) {
     return item;
 }
 
-// Muted card for a past weekday — shows the date label, nothing else.
+// Full-structure muted card for a day with no server data (past days in
+// month mode). Uses buildDayCard with synthetic empty data so it looks
+// like a real card but greyed out via .day-card-past.
 function pastDayCard(isoDate) {
-    const card = document.createElement("div");
-    card.className = "day-card day-card-past";
-    const d = new Date(`${isoDate}T00:00:00`);
-    const weekday = d.toLocaleDateString(undefined, { weekday: "short" });
-    const label = document.createElement("span");
-    label.className = "day-card-date";
-    label.textContent = `${weekday} ${isoDate.slice(5)}`;
-    card.appendChild(label);
+    const card = buildDayCard({
+        date: isoDate,
+        available_hours: 0,
+        planned_hours_total: 0,
+        entries: [],
+        deadlines: [],
+    }, false);
+    card.classList.add("day-card-past");
     return card;
 }
 
