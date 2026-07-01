@@ -8,3 +8,8 @@ services:
     buildCommand: pip install -r server/requirements-prod.txt
     startCommand: gunicorn server.wsgi:app --bind 0.0.0.0:$PORT
     healthCheckPath: /api/health
+    envVars:
+      - key: PYTHON_VERSION
+        value: 3.12.7
+      - key: PRIOTASK_SEED_DEMO
+        value: "true" # auto-seeds the admin/adminadmin demo account on every boot of an empty DB

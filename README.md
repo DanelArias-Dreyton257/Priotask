@@ -129,6 +129,14 @@ every spin-down/spin-up cycle after 15 minutes of inactivity. Fine for
 demoing v1.0.0; not a place to keep real data yet — see
 [Planned Improvements](#technical--operational).
 
+To keep the deployed instance demoable through those resets, the Render
+service runs with `PRIOTASK_SEED_DEMO=true`, which auto-seeds an
+`admin` / `adminadmin` account with a varied set of tasks
+(`server/src/services/DemoSeeder.py`) on every boot of an empty database.
+Every deadline is computed relative to "now" and kept at least a day out, so
+the demo always looks like an active, ongoing project rather than showing
+stale or overdue tasks.
+
 ## Versioning
 Priotask follows [Semantic Versioning](https://semver.org/) (`MAJOR.MINOR.PATCH`).
 Releases are git tags (`vX.Y.Z`); see [`CHANGELOG.md`](CHANGELOG.md) for what
