@@ -18,7 +18,7 @@ class PrioritizerService:
         self.model = model or FormulaPrioritizer()
 
     def _scores(self, tasks: List[Task], reference_date: datetime) -> List[Tuple[Task, float]]:
-        return [(task, self.model.score(task, reference_date)) for task in tasks]
+        return self.model.score_many(tasks, reference_date)
 
     def rank(self, tasks: List[Task], reference_date: Optional[datetime] = None) -> List[Tuple[Task, float]]:
         """pi = argsort(v, desc; Tipo, Sub-tipo, Nombre, asc) (eq. 5)."""

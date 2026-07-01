@@ -1,4 +1,5 @@
 import pickle
+import threading
 from datetime import datetime
 from typing import Dict, List, Optional, Tuple
 
@@ -13,6 +14,11 @@ from server.src.services.Prioritizer.PrioritizerModel import PrioritizerModel
 HIDDEN_UNITS = 8
 TrainingExample = Tuple[Task, datetime, int]
 
+# Bump this string whenever FEATURE_ORDER or HIDDEN_UNITS change so that an
+# existing user's stored weights are detected as incompatible and gracefully
+# discarded rather than crashing on a shape-mismatch at load time.
+_WEIGHTS_FORMAT_VERSION = "v2"
+
 
 class PrioritizerNetwork(PrioritizerModel):
     """
@@ -21,10 +27,20 @@ class PrioritizerNetwork(PrioritizerModel):
     learns a *correction* on top of FormulaPrioritizer's score v_i rather
     than replacing it outright (see README "The Prioritization Model").
 
-    Persistence goes through ModelStore: this class only knows how to turn
-    its own weights into bytes and back (`_serialize`/`_deserialize`) under
-    its own `MODEL_TYPE`, so a future model (e.g. an XGBoost booster) can
-    plug into the same store without touching ModelStore or this class.
+    Phase 12 robustness improvements over the original Phase 6 design:
+    - Features are normalized to ~[-1, 1] before reaching the network
+      (FeatureExtractor.extract_normalized) so differently-scaled inputs
+      don't dominate gradient updates on small per-user datasets.
+    - score_many() batches all tasks into a single model.predict() call
+      instead of one call per task, so ranking a user's full list costs
+      one Keras invocation, not N.
+    - Serialized weights carry a format version tag so a future architecture
+      change falls back to formula-only scoring for existing users instead
+      of crashing on a weight shape-mismatch.
+    - fit() uses a train/validation split + EarlyStopping when there's
+      enough data (≥10 examples), avoiding overfitting on the tiny dataset.
+    - A per-user threading.Lock prevents concurrent train calls from racing
+      on ModelStore.save for the same user.
     """
 
     MODEL_TYPE = "keras_nn_v1"
@@ -33,6 +49,8 @@ class PrioritizerNetwork(PrioritizerModel):
         self.model_store = model_store or SqliteModelStore()
         self.extractor = FeatureExtractor()
         self._cache: Dict[int, keras.Model] = {}
+        self._train_locks: Dict[int, threading.Lock] = {}
+        self._lock_registry = threading.Lock()
 
     def _build_model(self) -> keras.Model:
         model = keras.Sequential([
@@ -44,10 +62,30 @@ class PrioritizerNetwork(PrioritizerModel):
         return model
 
     def _serialize(self, model: keras.Model) -> bytes:
-        return pickle.dumps([w.tolist() for w in model.get_weights()])
+        data = {
+            "version": _WEIGHTS_FORMAT_VERSION,
+            "feature_order": FEATURE_ORDER,
+            "hidden_units": HIDDEN_UNITS,
+            "weights": [w.tolist() for w in model.get_weights()],
+        }
+        return pickle.dumps(data)
 
-    def _deserialize(self, model: keras.Model, payload: bytes) -> None:
-        model.set_weights([np.array(w) for w in pickle.loads(payload)])
+    def _deserialize(self, model: keras.Model, payload: bytes) -> bool:
+        """Load weights from payload into model. Returns False if the stored
+        format is incompatible with the current architecture (in which case
+        the caller should fall back to formula-only scoring)."""
+        data = pickle.loads(payload)
+        # Legacy format (Phase 6): plain list of weight arrays — treat as
+        # compatible so existing users aren't silently reset.
+        if isinstance(data, list):
+            model.set_weights([np.array(w) for w in data])
+            return True
+        if (data.get("feature_order") != FEATURE_ORDER
+                or data.get("hidden_units") != HIDDEN_UNITS
+                or data.get("version") != _WEIGHTS_FORMAT_VERSION):
+            return False
+        model.set_weights([np.array(w) for w in data["weights"]])
+        return True
 
     def _model_for_user(self, user_id: int) -> Optional[keras.Model]:
         if user_id in self._cache:
@@ -56,9 +94,16 @@ class PrioritizerNetwork(PrioritizerModel):
         if payload is None:
             return None
         model = self._build_model()
-        self._deserialize(model, payload)
+        if not self._deserialize(model, payload):
+            return None
         self._cache[user_id] = model
         return model
+
+    def _get_train_lock(self, user_id: int) -> threading.Lock:
+        with self._lock_registry:
+            if user_id not in self._train_locks:
+                self._train_locks[user_id] = threading.Lock()
+            return self._train_locks[user_id]
 
     def score(self, task: Task, reference_date: datetime) -> float:
         features = self.extractor.extract(task, reference_date)
@@ -68,22 +113,67 @@ class PrioritizerNetwork(PrioritizerModel):
         if model is None:
             return formula_score
 
-        correction = float(model.predict(np.array([features]), verbose=0)[0][0])
-        # correction in [0, 1]; an untrained-but-loaded network starts near
-        # 0.5 (sigmoid of ~0 weights), so the *2 multiplier starts near 1 -
-        # i.e. it never silently zeroes out the formula score before training.
+        norm = self.extractor.normalize(features)
+        correction = float(model.predict(np.array([norm]), verbose=0)[0][0])
         return formula_score * (2 * correction)
+
+    def score_many(self, tasks: List[Task], reference_date: datetime):
+        """Batch-score all tasks, making at most one model.predict() call per
+        distinct user_id that has a trained model. Tasks without a trained
+        model fall back to FormulaPrioritizer's score individually."""
+        if not tasks:
+            return []
+
+        # Separate tasks by user (or no-user) to decide which ones get a
+        # batched Keras call vs. a simple formula fallback.
+        formula_scores = [
+            self.extractor.extract(task, reference_date)[FEATURE_ORDER.index("formula_score")]
+            for task in tasks
+        ]
+
+        # Group task indices by user_id so we can batch per-user.
+        user_groups: Dict[int, List[int]] = {}
+        for idx, task in enumerate(tasks):
+            if task.user_id is not None:
+                user_groups.setdefault(task.user_id, []).append(idx)
+
+        results = list(formula_scores)  # default: formula score for everyone
+
+        for user_id, indices in user_groups.items():
+            model = self._model_for_user(user_id)
+            if model is None:
+                continue
+            user_tasks = [tasks[i] for i in indices]
+            batch = np.array([
+                self.extractor.extract_normalized(t, reference_date) for t in user_tasks
+            ])
+            corrections = model.predict(batch, verbose=0).flatten()
+            for idx, correction in zip(indices, corrections):
+                results[idx] = formula_scores[idx] * (2 * float(correction))
+
+        return list(zip(tasks, results))
 
     def fit(self, user_id: int, examples: List[TrainingExample], epochs: int = 50) -> None:
         """examples: (task, reference_date, label), label=1 for the task the
         user picked to work on, 0 for tasks that were available but weren't."""
-        model = self._model_for_user(user_id) or self._build_model()
-        x = np.array([self.extractor.extract(task, reference_date) for task, reference_date, _ in examples])
-        y = np.array([label for _, _, label in examples], dtype=float)
-        model.fit(x, y, epochs=epochs, verbose=0)
+        with self._get_train_lock(user_id):
+            model = self._model_for_user(user_id) or self._build_model()
+            x = np.array([
+                self.extractor.extract_normalized(task, ref) for task, ref, _ in examples
+            ])
+            y = np.array([label for _, _, label in examples], dtype=float)
 
-        self._cache[user_id] = model
-        self.model_store.save(user_id, self.MODEL_TYPE, self._serialize(model), datetime.now())
+            # Use a validation split + early stopping once there's enough data
+            # to avoid overfitting on the tiny per-user dataset.
+            if len(x) >= 10:
+                callbacks = [keras.callbacks.EarlyStopping(patience=5, restore_best_weights=True)]
+                model.fit(x, y, epochs=epochs, validation_split=0.2,
+                          callbacks=callbacks, verbose=0)
+            else:
+                model.fit(x, y, epochs=epochs, verbose=0)
+
+            self._cache[user_id] = model
+            self.model_store.save(user_id, self.MODEL_TYPE, self._serialize(model), datetime.now())
 
     def forget(self, user_id: int) -> None:
         """Discards a user's trained model, reverting score() to FormulaPrioritizer."""
