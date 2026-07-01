@@ -16,6 +16,7 @@ Or in isolation:
     python -m unittest client.test.Js_test
 """
 
+import json
 import threading
 import unittest
 from datetime import date
@@ -521,24 +522,48 @@ class WeekPlanViewsTest(_PlaywrightBase):
         for label in ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"]:
             self.assertIn(label, html, f"header '{label}' missing from week grid")
 
-    def test_render_week_plan_past_day_cards_match_today_offset(self):
+    def test_render_week_plan_next_week_overflow_cards_get_past_class(self):
+        # Days after Sunday of the current calendar week should be muted.
+        # +8 days from today is always in next week regardless of today's weekday.
         import datetime
-        today_offset = datetime.date.today().weekday()  # Mon=0, Sun=6
-        past_count = self.js("""async () => {
-            const { Views } = await import('/static/js/views.js');
-            Views.renderWeekPlan([]);
+        next_week_date = (datetime.date.today() + datetime.timedelta(days=8)).isoformat()
+        has_past = self.js(f"""async () => {{
+            const {{ Views }} = await import('/static/js/views.js');
+            const day = {{"date": "{next_week_date}", "available_hours": 6,
+                         "planned_hours_total": 0, "entries": [], "deadlines": []}};
+            Views.renderWeekPlan([day]);
+            return document.getElementById('week-grid').querySelector('.day-card-past') !== null;
+        }}""")
+        self.assertTrue(has_past)
+
+    def test_render_week_plan_next_week_cards_placed_before_current_week(self):
+        # With 7 rolling days, next-week overflow cards (todayOffset of them)
+        # must appear BEFORE current-week cards in DOM order so they occupy
+        # the Mon-…-(today-1) columns and today lands in its real weekday column.
+        import datetime
+        today = datetime.date.today()
+        today_offset = today.weekday()
+        days = [
+            {"date": (today + datetime.timedelta(days=i)).isoformat(),
+             "available_hours": 6, "planned_hours_total": 0, "entries": [], "deadlines": []}
+            for i in range(7)
+        ]
+        past_count = self.js(f"""async () => {{
+            const {{ Views }} = await import('/static/js/views.js');
+            Views.renderWeekPlan({json.dumps(days)});
             return document.getElementById('week-grid').querySelectorAll('.day-card-past').length;
-        }""")
+        }}""")
         self.assertEqual(past_count, today_offset)
 
     def test_render_week_plan_produces_day_card_for_each_entry(self):
+        today = date.today().isoformat()
         result = self.js(f"""async () => {{
             const {{ Views }} = await import('/static/js/views.js');
-            const day = {{"date": "2099-01-07", "available_hours": 6,
+            const day = {{"date": "{today}", "available_hours": 6,
                          "planned_hours_total": 2, "entries": [], "deadlines": []}};
             Views.renderWeekPlan([day, day, day]);
             const grid = document.getElementById('week-grid');
-            // Exclude both past-day and trailing-blank cards — only real data cards.
+            // Exclude both next-week-muted and trailing-blank cards — only current-week cards.
             return grid.querySelectorAll('.day-card:not(.day-card-past):not(.day-card-blank)').length;
         }}""")
         self.assertEqual(result, 3)
