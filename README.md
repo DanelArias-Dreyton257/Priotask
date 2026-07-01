@@ -2,7 +2,7 @@
 Priotask helps manage and prioritize tasks for effective time management, allowing users to quickly focus on important tasks and meet deadlines. It streamlines manual workload management.
 
 ## Getting Started
-Everything needed to run Phases 1-13 locally and try the app end to end.
+Everything needed to run Phases 1-15 locally and try the app end to end.
 
 ### 1. Set up the environment
 The easiest path is the install script (requires conda on `$PATH`):
@@ -89,21 +89,26 @@ Open `http://localhost:5500` in a browser:
    last trained, without itself triggering training; **Reset model** (shown once a model is
    active) discards it and reverts to formula-only scoring. The **Timetable** window's plan list
    and week/month grids also show a spinner while their server requests are in-flight (Phase 12).
+   The model also re-fits automatically in the background every 5th task completion (Phase 15) —
+   no manual "Train" click needed once you have enough history.
 8. The **Account** window (Phase 13) shows the logged-in user's username/email, and lets them
    update their email or change their password (the current password is verified server-side
-   before the change is accepted).
+   before the change is accepted). **Delete account** (Phase 15) permanently removes the account
+   and all its data — type "DELETE" in the confirmation box to unlock the button; on success the
+   app logs out automatically.
 
 ### 5. Run the tests
 ```
 python -m unittest discover -s server/test -p "*_test.py"
 python -m unittest discover -s client/test -p "*_test.py"
 ```
-The first command covers the server (Prioritizer, DailyPlanner, TaskManager, UserManager, API —
-117 tests). The second covers the client: `Client_test.py` (smoke test that the page and static
-assets are served) and `Js_test.py` (31 Playwright-driven tests for `views.js` and `api.js` —
-Phase 12). The Playwright tests spin up the Flask client on a local ephemeral port and exercise
-the JS modules in a headless Chromium browser; they require `python -m playwright install
-chromium` once (the `scripts/install.sh` / `scripts/update.sh` scripts do this automatically).
+The first command covers the server (Prioritizer, DailyPlanner, TaskManager, UserManager,
+AuthService, API — 144 tests). The second covers the client: `Client_test.py` (smoke test that
+the page and static assets are served) and `Js_test.py` (42 Playwright-driven tests for
+`views.js` and `api.js` — Phase 12). The Playwright tests spin up the Flask client on a local
+ephemeral port and exercise the JS modules in a headless Chromium browser; they require
+`python -m playwright install chromium` once (the `scripts/install.sh` / `scripts/update.sh`
+scripts do this automatically).
 
 ## Scripts
 Bash scripts in `scripts/` (run from the repo root, or anywhere — they `cd` to the repo root
@@ -122,10 +127,10 @@ themselves):
 - `./scripts/reset_db.sh [path]` — deletes the SQLite file (`priotask.db` by default), wiping
   every user, task and trained `PrioritizerNetwork` weight; the server recreates an empty one with
   the current schema next time it starts. Prompts for confirmation unless run with `FORCE=1`.
-- `./scripts/seed_demo_data.sh [path]` — registers an `admin`/`admin` user (if it doesn't exist
-  yet) and seeds it with a varied set of demo tasks (overdue, due today/this week/this month,
-  different efforts/importances/types, a couple already completed, one partially logged) for
-  manually trying out the UI. No-op if `admin` already has tasks.
+- `./scripts/seed_demo_data.sh [path]` — registers an `admin`/`adminadmin` user (if it doesn't
+  exist yet) and seeds it with a varied set of demo tasks (overdue, due today/this week/this
+  month, different efforts/importances/types, a couple already completed, one partially logged)
+  for manually trying out the UI. No-op if `admin` already has tasks.
 
 ## The Behaviour
 Priotask is supposed to let a user register the tasks they need to do and help them schedule them. The user can also prioritize tasks, and the application will help them focus on the most important tasks. The user can also mark tasks as done, and the application will adapt to the user's preferences. 
@@ -160,23 +165,25 @@ Priotask/
     │   │   ├── app.py        # create_app(): wires DB/managers/services, registers blueprints, CORS
     │   │   ├── auth.py       # require_auth decorator (Bearer token -> g.user_id)
     │   │   ├── user_routes.py        # POST /users, /auth/login, /auth/logout, GET|PUT /users/me,
-    │   │   │                         # POST /users/me/password (Phase 13)
+    │   │   │                         # POST /users/me/password (Phase 13), DELETE /users/me (Phase 15)
     │   │   ├── task_routes.py        # CRUD for /tasks (+ /complete, /log-hours, Phase 7)
     │   │   ├── plan_routes.py        # GET /plan/today (Phase 3), GET /plan/week (Phase 9)
     │   │   └── prioritizer_routes.py # POST /prioritizer/train (PrioritizerTrainer, Phase 6)
     │   ├── data/
     │   │   ├── db/           # DB access: DB.py (sqlite3, schema for users/tasks/model_weights/
-    │   │   │                 # completion_snapshots), TaskDAO/UserDAO/ModelWeightsDAO/
-    │   │   │                 # CompletionSnapshotDAO (Phase 7)
+    │   │   │                 # completion_snapshots/sessions), TaskDAO/UserDAO/ModelWeightsDAO/
+    │   │   │                 # CompletionSnapshotDAO (Phase 7) / SessionDAO (Phase 15)
     │   │   ├── domain/       # Domain models: Task, User (now carry persistence fields)
     │   │   └── dto/          # Wire-format dataclasses: TaskDTO, UserDTO
     │   ├── remote/           # Client-server link: RemoteFacade, TokenManager (stubs)
     │   └── services/
     │       ├── TaskManager.py       # Task CRUD + domain<->DTO mapping, completion snapshots,
-    │       │                       # partial-hours logging (Phase 7) and recurrence spawning (Phase 11)
+    │       │                       # partial-hours logging (Phase 7), recurrence spawning (Phase 11),
+    │       │                       # and auto-retrain callback (Phase 15)
     │       ├── Recurrence.py        # next_deadline(): day/week/month date math (Phase 11)
     │       ├── UserManager.py       # User CRUD + password hashing (done)
-    │       ├── AuthService.py       # Bearer token issuing/lookup, in-memory (Phase 4, done)
+    │       ├── AuthService.py       # Bearer token issuing/lookup; DB-persisted sessions with
+    │       │                        # sliding expiry and multi-device support (Phase 15)
     │       └── Prioritizer/         # See "The Prioritization Model" below
     │           ├── PrioritizerModel.py      # Common interface: score(task, reference_date)
     │           ├── FormulaPrioritizer.py    # Closed-form model from tareas_spec.pdf (done)
@@ -194,6 +201,7 @@ Priotask/
         ├── DailyPlanner_test.py       # Unit tests for DailyPlanner (water-filling budget)
         ├── TaskManager_test.py        # Unit tests for TaskManager (in-memory sqlite)
         ├── UserManager_test.py        # Unit tests for UserManager (in-memory sqlite)
+        ├── AuthService_test.py        # Unit tests for AuthService (session persistence/expiry, Phase 15)
         ├── Api_test.py                # Unit tests for the Flask API (in-memory sqlite)
         └── Server_test.py
 ```
@@ -719,20 +727,36 @@ month render).
 
 ### Phase 15 — Account management & session polish
 Remaining gaps in the account and session layers that don't belong with any earlier phase:
-- **Delete account**: the Account window (Phase 13) lets users update their email and change their
-  password but has no way to delete the account. Needs `DELETE /api/users/me` (server: removes the
-  user row, cascades to tasks/model weights/snapshots) and a confirmation-gated "Delete account"
-  button in the Account window.
-- **Session expiry**: `AuthService`'s in-memory token store never expires tokens and is wiped on
-  server restart, logging everyone out. A real expiry policy (e.g. sliding 7-day expiry, persisted
-  in a `sessions` DB table) would let users stay logged in across restarts and automatically revoke
-  abandoned sessions. The `require_auth` decorator and `TokenManager` stub are the natural
-  extension points.
-- **Auto-retrain after N completions**: the Prioritizer window requires a manual "Train" click.
-  Automatically re-fitting the model after every Nth task completion (N configurable, e.g. 5)
-  would keep the model fresh without user action. The hook belongs in `TaskManager.mark_done`
-  (already the completion choke-point); the threshold can be read from a user preference or a
-  server constant.
+
+- **Delete account**: `DELETE /api/users/me` cascade-deletes the authenticated user's row plus
+  all dependent data — tasks, completion snapshots, model weights, and active sessions — in service-
+  layer order (snapshots → model weights → tasks → sessions → user row) so SQLite's FK constraints
+  are never violated. `AuthService.revoke_user(user_id)` purges every session for that user from
+  the DB, so the token used in the request is immediately invalid even before the row is gone.
+  Client: a "Delete account" section in the Account window with a confirmation-gated button (the
+  UI asks the user to type "DELETE" before enabling the final button), then logs out automatically
+  on success.
+- **Session persistence + expiry**: `AuthService` replaces its in-memory dict with a `sessions`
+  table (new `SessionDAO`, schema added to `DB.py` as `CREATE TABLE IF NOT EXISTS`, so a no-op on
+  fresh DBs and automatically present on existing ones). Token format stays the same (opaque
+  `secrets.token_urlsafe(32)`). Expiry: `PRIOTASK_SESSION_EXPIRY_DAYS` env var, default 7. Sliding
+  expiry: on every successful `resolve_token`, `expires_at` is extended to `now + EXPIRY_DAYS` so
+  active sessions never expire mid-use. Expired tokens are rejected in `resolve_token` (returns
+  `None` → `require_auth` responds 401) and deleted from the DB on the next resolve or login.
+  Each login issues a new token (multi-device / multi-tab friendly); `revoke_user` deletes **all**
+  sessions for a given user, used on account deletion.
+- **Auto-retrain after N completions**: `TaskManager` accepts an optional `on_completion` callback
+  (`Callable[[int], None]`), called with the completing user's `user_id` after `mark_done` records
+  the snapshot. The callback fires in a daemon thread (non-blocking) when the user's total
+  completion count (snapshot count) is divisible by `AUTO_RETRAIN_EVERY` (default 5). In
+  `create_app`, the callback is wired to `PrioritizerTrainer.train` — so after every 5th
+  completion the model silently re-fits in the background without any manual "Train" click.
+  Errors in the background thread are suppressed (best-effort; the user still sees the completion
+  succeed). The threshold constant lives in `TaskManager.AUTO_RETRAIN_EVERY` for easy tweaking.
+- **Server-side input validation**: `POST /users` now rejects usernames shorter than 3 characters
+  and passwords shorter than 8 characters (400 + a descriptive error message). `POST
+  /users/me/password` applies the same minimum-length check to the new password. These guard the
+  API regardless of which client sends the request.
 
 ## The TODO List
 This section presents all the tasks that need to be done to complete the project, grouped by the
@@ -831,13 +855,20 @@ roadmap phase that owns them (see above for full descriptions).
 - [x] "This month" tab: same day-card grid grouped into 5-6 week-rows instead of one row,
   reusing `GET /api/plan/week` with `days = daysRemainingInMonth` (max 31, within the existing
   server bound); trailing blank cards added to complete the last partial week row
-### Phase 15 — Account management & session polish
-- [ ] `DELETE /api/users/me` (server: cascade-delete user + tasks + model weights + snapshots)
-  and a confirmation-gated "Delete account" button in the Account window
-- [ ] Token expiry policy: persist sessions in a `sessions` DB table with a sliding expiry so
-  users survive server restarts and abandoned sessions are eventually revoked
-- [ ] Auto-retrain after N completions: hook in `TaskManager.mark_done` to re-fit
-  `PrioritizerNetwork` every Nth completion without requiring a manual "Train" click
+### Phase 15 — Account management & session polish (done)
+- [x] `DELETE /api/users/me` (server: cascade-delete snapshots → model weights → tasks → sessions →
+  user row; `AuthService.revoke_user` purges all sessions for the user from the DB)
+- [x] Confirmation-gated "Delete account" button in the Account window (type "DELETE" to unlock;
+  success auto-logs out)
+- [x] Session persistence: `sessions` table + `SessionDAO`; `AuthService` uses DB instead of
+  in-memory dicts so sessions survive server restarts
+- [x] Session expiry: sliding 7-day expiry (`PRIOTASK_SESSION_EXPIRY_DAYS` env var); expired tokens
+  rejected with 401 and deleted from the DB on the next access
+- [x] Auto-retrain every N completions: `TaskManager.on_completion` callback fires in a daemon
+  thread when `snapshot_count % AUTO_RETRAIN_EVERY == 0`; wired to `PrioritizerTrainer.train` in
+  `create_app`
+- [x] Server-side input validation: username ≥ 3 chars, password ≥ 8 chars on register; new
+  password ≥ 8 chars on change-password
 ### Done (Phases 1-6)
 - [x] Create the server storage system through a sqlite3 database
 - [x] Create the server prioritizer based on the closed-form spec (`FormulaPrioritizer`)

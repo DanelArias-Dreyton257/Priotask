@@ -19,7 +19,7 @@ from server.src.services.TaskManager import TaskManager  # noqa: E402
 from server.src.services.UserManager import UserManager  # noqa: E402
 
 ADMIN_USERNAME = "admin"
-ADMIN_PASSWORD = "admin"
+ADMIN_PASSWORD = "adminadmin"
 ADMIN_EMAIL = "admin@priotask.local"
 
 
