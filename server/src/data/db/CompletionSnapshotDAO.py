@@ -26,3 +26,12 @@ class CompletionSnapshotDAO(object):
     def get_snapshots_for_user(self, user_id: int) -> List[sqlite3.Row]:
         query = "SELECT * FROM completion_snapshots WHERE user_id = ?"
         return self.db.execute(query, (user_id,)).fetchall()
+
+    def count_for_user(self, user_id: int) -> int:
+        row = self.db.execute(
+            "SELECT COUNT(*) AS n FROM completion_snapshots WHERE user_id = ?", (user_id,)
+        ).fetchone()
+        return row["n"] if row else 0
+
+    def delete_snapshots_for_user(self, user_id: int) -> None:
+        self.db.execute("DELETE FROM completion_snapshots WHERE user_id = ?", (user_id,))

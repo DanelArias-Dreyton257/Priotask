@@ -55,3 +55,6 @@ class TaskDAO(object):
 
     def delete_task(self, task_id: int) -> None:
         self.db.execute("DELETE FROM tasks WHERE task_id = ?", (task_id,))
+
+    def delete_tasks_for_user(self, user_id: int) -> None:
+        self.db.execute("DELETE FROM tasks WHERE user_id = ?", (user_id,))

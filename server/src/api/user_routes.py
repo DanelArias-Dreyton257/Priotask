@@ -1,8 +1,9 @@
 """
 User endpoints: POST /users (register), POST /auth/login, POST /auth/logout,
 GET|PUT /users/me (profile + email update), POST /users/me/password (change
-password with current-password verification). Phase 13 adds the /users/me
-routes; auth routes are Phase 4.
+password with current-password verification), DELETE /users/me (cascade-delete
+account). Phase 13 adds /users/me routes; Phase 15 adds DELETE /users/me and
+server-side input validation (username ≥ 3 chars, password ≥ 8 chars).
 """
 from dataclasses import asdict
 
@@ -12,6 +13,9 @@ from server.src.api.auth import require_auth
 
 user_bp = Blueprint("users", __name__)
 
+_MIN_USERNAME_LEN = 3
+_MIN_PASSWORD_LEN = 8
+
 
 @user_bp.post("/users")
 def register():
@@ -20,6 +24,11 @@ def register():
         username, password, email = body["username"], body["password"], body["email"]
     except KeyError as exc:
         return jsonify(error=f"missing field: {exc.args[0]}"), 400
+
+    if len(username) < _MIN_USERNAME_LEN:
+        return jsonify(error=f"username must be at least {_MIN_USERNAME_LEN} characters"), 400
+    if len(password) < _MIN_PASSWORD_LEN:
+        return jsonify(error=f"password must be at least {_MIN_PASSWORD_LEN} characters"), 400
 
     if current_app.user_manager.get_user_by_username(username) is not None:
         return jsonify(error="username already taken"), 409
@@ -79,7 +88,25 @@ def change_password():
     except KeyError as exc:
         return jsonify(error=f"missing field: {exc.args[0]}"), 400
 
+    if len(new_password) < _MIN_PASSWORD_LEN:
+        return jsonify(error=f"password must be at least {_MIN_PASSWORD_LEN} characters"), 400
+
     changed = current_app.user_manager.change_password(g.user_id, current_password, new_password)
     if not changed:
         return jsonify(error="current password is incorrect"), 400
+    return "", 204
+
+
+@user_bp.delete("/users/me")
+@require_auth
+def delete_account():
+    """Cascade-delete: snapshots → model weights → tasks → sessions → user row.
+    The token is revoked before the row is gone so it is immediately invalid."""
+    user_id = g.user_id
+    # Cascade in dependency order so FK constraints are never violated.
+    current_app.task_manager.delete_snapshots_for_user(user_id)
+    current_app.prioritizer_network.forget(user_id)
+    current_app.task_manager.delete_tasks_for_user(user_id)
+    current_app.auth_service.revoke_user(user_id)
+    current_app.user_manager.delete_user_by_id(user_id)
     return "", 204

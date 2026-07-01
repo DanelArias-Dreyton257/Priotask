@@ -3,6 +3,8 @@ Flask application factory (create_app). Wires the DB, DAOs, managers and
 services together, registers all API blueprints, and enables CORS for the
 browser client on a different origin/port.
 """
+import threading
+
 from flask import Flask, request
 
 from server.src.api.plan_routes import plan_bp
@@ -12,6 +14,7 @@ from server.src.api.user_routes import user_bp
 from server.src.data.db.CompletionSnapshotDAO import CompletionSnapshotDAO
 from server.src.data.db.DB import DB
 from server.src.data.db.ModelWeightsDAO import ModelWeightsDAO
+from server.src.data.db.SessionDAO import SessionDAO
 from server.src.data.db.TaskDAO import TaskDAO
 from server.src.data.db.UserDAO import UserDAO
 from server.src.services.AuthService import AuthService
@@ -34,8 +37,7 @@ def create_app(db_path: str = "priotask.db") -> Flask:
 
     db = DB(db_path).connect()
     app.user_manager = UserManager(UserDAO(db))
-    app.task_manager = TaskManager(TaskDAO(db), CompletionSnapshotDAO(db))
-    app.auth_service = AuthService(app.user_manager)
+    app.auth_service = AuthService(app.user_manager, SessionDAO(db))
 
     # PrioritizerNetwork falls back to FormulaPrioritizer's own score until a
     # user has a trained network stored, so wiring it in here is a no-op for
@@ -45,7 +47,27 @@ def create_app(db_path: str = "priotask.db") -> Flask:
     network = PrioritizerNetwork(model_store)
     app.prioritizer_network = network
     app.daily_planner = DailyPlanner(PrioritizerService(network))
-    app.prioritizer_trainer = PrioritizerTrainer(app.task_manager, network)
+
+    # Phase 15: auto-retrain callback — fired in a daemon thread by
+    # TaskManager.mark_done every AUTO_RETRAIN_EVERY completions.
+    trainer = PrioritizerTrainer(None, network)  # task_manager injected below
+    app.prioritizer_trainer = trainer
+
+    def _auto_retrain(user_id: int) -> None:
+        try:
+            trainer.train(user_id)
+        except Exception:
+            pass
+
+    snapshot_dao = CompletionSnapshotDAO(db)
+    task_manager = TaskManager(
+        TaskDAO(db), snapshot_dao,
+        on_completion=lambda uid: threading.Thread(
+            target=_auto_retrain, args=(uid,), daemon=True
+        ).start(),
+    )
+    app.task_manager = task_manager
+    trainer.task_manager = task_manager  # complete circular wiring
 
     app.register_blueprint(user_bp, url_prefix="/api")
     app.register_blueprint(task_bp, url_prefix="/api")

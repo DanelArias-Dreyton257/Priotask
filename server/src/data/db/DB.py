@@ -44,6 +44,13 @@ CREATE TABLE IF NOT EXISTS completion_snapshots (
     open_task_ids TEXT NOT NULL,
     FOREIGN KEY (user_id) REFERENCES users (user_id)
 );
+
+CREATE TABLE IF NOT EXISTS sessions (
+    token TEXT PRIMARY KEY,
+    user_id INTEGER NOT NULL,
+    expires_at TEXT NOT NULL,
+    FOREIGN KEY (user_id) REFERENCES users (user_id)
+);
 """
 
 # Phase 11 (recurring tasks) added three columns to `tasks` after this project's only

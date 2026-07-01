@@ -1,18 +1,22 @@
 """
 CRUD layer between TaskDAO/CompletionSnapshotDAO and the domain. Handles
 domain<->DTO mapping, partial-hour logging (Phase 7), completion snapshots
-(Phase 7), and recurring-task spawning (Phase 11).
+(Phase 7), recurring-task spawning (Phase 11), and auto-retrain triggering
+(Phase 15).
 """
 import json
 import sqlite3
 from datetime import datetime
-from typing import List, NamedTuple, Optional
+from typing import Callable, List, NamedTuple, Optional
 
 from server.src.data.db.CompletionSnapshotDAO import CompletionSnapshotDAO
 from server.src.data.db.TaskDAO import TaskDAO
 from server.src.data.domain.Task import Task
 from server.src.data.dto.TaskDTO import TaskDTO
 from server.src.services.Recurrence import next_deadline
+
+# Fire the on_completion callback every this many completions per user.
+AUTO_RETRAIN_EVERY = 5
 
 
 class CompletionSnapshot(NamedTuple):
@@ -27,9 +31,12 @@ class CompletionSnapshot(NamedTuple):
 class TaskManager:
     """CRUD layer between TaskDAO (raw rows) and the rest of the app (Task/TaskDTO)."""
 
-    def __init__(self, dao: Optional[TaskDAO] = None, snapshot_dao: Optional[CompletionSnapshotDAO] = None):
+    def __init__(self, dao: Optional[TaskDAO] = None,
+                 snapshot_dao: Optional[CompletionSnapshotDAO] = None,
+                 on_completion: Optional[Callable[[int], None]] = None):
         self.dao = dao or TaskDAO()
         self.snapshot_dao = snapshot_dao or CompletionSnapshotDAO()
+        self._on_completion = on_completion
 
     def _row_to_domain(self, row: sqlite3.Row) -> Task:
         return Task(
@@ -113,7 +120,8 @@ class TaskManager:
     def mark_done(self, task_id: int, completed_at: Optional[datetime] = None) -> None:
         """Persist completion, snapshotting which other tasks were still open
         at this moment - the Phase 6 training signal for PrioritizerNetwork.
-        If the task recurs (Phase 11), also spawns its next occurrence."""
+        If the task recurs (Phase 11), also spawns its next occurrence.
+        Phase 15: fires on_completion callback every AUTO_RETRAIN_EVERY completions."""
         completed_at = completed_at or datetime.now()
         task = self.get_domain_task(task_id)
         if task is not None:
@@ -127,6 +135,10 @@ class TaskManager:
         self.dao.mark_done(task_id, completed_at.isoformat())
         if task is not None and task.recurrence_unit:
             self._spawn_next_occurrence(task)
+        if task is not None and self._on_completion is not None:
+            count = self.snapshot_dao.count_for_user(task.user_id)
+            if count % AUTO_RETRAIN_EVERY == 0:
+                self._on_completion(task.user_id)
 
     def _spawn_next_occurrence(self, task: Task) -> Optional[TaskDTO]:
         upcoming = next_deadline(task.deadline, task.recurrence_unit, task.recurrence_interval or 1)
@@ -166,3 +178,9 @@ class TaskManager:
 
     def delete_task(self, task_id: int) -> None:
         self.dao.delete_task(task_id)
+
+    def delete_tasks_for_user(self, user_id: int) -> None:
+        self.dao.delete_tasks_for_user(user_id)
+
+    def delete_snapshots_for_user(self, user_id: int) -> None:
+        self.snapshot_dao.delete_snapshots_for_user(user_id)

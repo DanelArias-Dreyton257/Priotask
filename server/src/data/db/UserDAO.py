@@ -38,3 +38,6 @@ class UserDAO(object):
 
     def delete_user(self, username: str) -> None:
         self.db.execute("DELETE FROM users WHERE username = ?", (username,))
+
+    def delete_user_by_id(self, user_id: int) -> None:
+        self.db.execute("DELETE FROM users WHERE user_id = ?", (user_id,))

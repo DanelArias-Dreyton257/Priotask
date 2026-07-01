@@ -80,3 +80,6 @@ class UserManager:
 
     def delete_user(self, username: str) -> None:
         self.dao.delete_user(username)
+
+    def delete_user_by_id(self, user_id: int) -> None:
+        self.dao.delete_user_by_id(user_id)
