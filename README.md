@@ -2,7 +2,7 @@
 Priotask helps manage and prioritize tasks for effective time management, allowing users to quickly focus on important tasks and meet deadlines. It streamlines manual workload management.
 
 ## Getting Started
-Everything needed to run Phases 1-11 and 13 locally and try the app end to end.
+Everything needed to run Phases 1-13 locally and try the app end to end.
 
 ### 1. Set up the environment
 ```
@@ -554,38 +554,65 @@ confirm the listed tasks now include a second open occurrence with the deadline 
 days) and confirming the `ALTER TABLE` migration runs cleanly against a copy of a real pre-existing
 `priotask.db`.
 
-### Phase 12 — Hardening & polish
-- JS unit tests for `views.js`/`app.js`/`api.js` — today only `client/test/Client_test.py` exists
-  (a smoke test that the page and static assets are served), so the JS modules are untested beyond
-  manual browser checks.
-- Documentation for the server and client (module-level docs beyond this README).
-- Installation, uninstallation and update scripts, reusing/extending the existing
-  `scripts/run.sh` and `scripts/reset_db.sh` rather than duplicating them.
-- **Waiting animations**: two distinct loading states that are currently missing from the client:
-  - **Training**: while `POST /api/prioritizer/train` is in-flight the Prioritizer window gives no
-    feedback — the Train button should show a spinner and be disabled until the response arrives.
-    Training can take several seconds (50 Keras epochs on the user's task history), so the lack of
-    feedback is noticeable.
-  - **Priority computation**: `GET /api/plan/today` and `GET /api/plan/week` both run
-    `PrioritizerService.rank` (and potentially `PrioritizerNetwork.score`, one Keras call per task)
-    server-side before responding — the Timetable window's Today and This-week views should show a
-    spinner in place of the plan list / week grid while the request is in-flight, then replace it
-    with the rendered result. The spinner should appear for every fetch that updates those views
-    (initial login, Refresh plan / Refresh week, and any task action that triggers
-    `refreshTasksAndPlan`).
-- `PrioritizerNetwork`/`PrioritizerTrainer` robustness (see the "Internal/robustness" gaps listed
-  under Phase 6 above for the reasoning behind each):
-  - Normalize `FeatureExtractor`'s feature vector before it reaches the network instead of feeding
-    in raw, differently-scaled values.
-  - Batch `model.predict()` across a user's tasks for one ranking pass instead of one call per task.
-  - Add a train/validation split (or at least early stopping) to `fit()` instead of always running
-    a fixed 50 epochs on whatever data is available.
-  - Version the stored weights against `FEATURE_ORDER`/`HIDDEN_UNITS` so a future architecture
-    change falls back to formula-only scoring for existing users instead of crashing on load.
-  - Guard against concurrent `POST /api/prioritizer/train` calls for the same user racing on
-    `ModelStore.save`.
-  - Invalidate/refresh `PrioritizerNetwork._cache` correctly if the server ever runs as more than
-    one process/worker.
+### Phase 12 — Hardening & polish (in progress)
+The first wave of Phase 12 work lands three user-visible waiting animations and a full robustness
+pass over `PrioritizerNetwork`:
+
+- **Waiting animations** (done):
+  - **Training**: `POST /api/prioritizer/train` can take several seconds (50 Keras epochs over the
+    user's task history). The Train button is now disabled and shows a spinner while the request is
+    in-flight, and is re-enabled in a `finally` block so it always comes back even on error
+    (`app.js` + `Views.setTrainButtonLoading`, `views.js` + CSS `@keyframes spin`).
+  - **Priority computation**: `GET /api/plan/today` and `GET /api/plan/week` run
+    `PrioritizerService.rank` (and potentially one Keras call per task) server-side before
+    responding. Both the Today plan list (`#plan-list`) and the week grid (`#week-grid`) now show a
+    spinner while the request is in-flight, replaced by the rendered result once it arrives
+    (`Views.showTodayPlanLoading` / `Views.showWeekPlanLoading`, called at the top of
+    `refreshTasksAndPlan` and `refreshWeekPlan` in `app.js`). The spinner appears for every fetch
+    that triggers those views: initial login, Refresh plan / Refresh week, and any task action that
+    calls `refreshTasksAndPlan`.
+- **Feature normalization** (done): `FeatureExtractor.extract_normalized` squashes each raw
+  feature to roughly `[-1, 1]` using domain-informed fixed scales (effort capped at 10 days → 1.0;
+  `days_remaining` via `tanh(x/14)`; importance divided by 10; urgency and formula score via
+  `tanh(x/scale)`) — stored alongside the raw `extract()` which existing tests and diagnostics
+  continue to call. `PrioritizerNetwork` now passes normalized features to both `score()` and
+  `fit()` so the gradient signal is not dominated by the large-magnitude urgency/formula-score
+  features on tiny per-user datasets. `normalize()` is also exposed directly on `FeatureExtractor`
+  so tests can exercise it independently.
+- **Batched prediction** (done): `PrioritizerModel` now declares a `score_many(tasks,
+  reference_date) → List[Tuple[Task, float]]` method with a default implementation that calls
+  `score()` per task. `PrioritizerNetwork` overrides it: all tasks that belong to the same user
+  and have a trained model are batched into one `model.predict()` call; formula-only tasks are
+  short-circuited without touching Keras. `PrioritizerService._scores` delegates to `score_many`
+  so both `rank` and `diagnostics` now use the batched path automatically.
+- **Weight versioning** (done): serialized weights now carry a `version` tag plus the exact
+  `FEATURE_ORDER` list and `HIDDEN_UNITS` value they were trained with. On load, if any of these
+  don't match the current code, `_model_for_user` returns `None` and `score()` falls back to
+  formula-only instead of crashing on a shape mismatch. Legacy Phase 6 weights (a plain pickled
+  list of weight arrays) are still accepted as-is so existing users aren't silently reset.
+- **Early stopping** (done): `fit()` now takes a train/validation split (20 %) and adds
+  `EarlyStopping(patience=5, restore_best_weights=True)` when there are at least 10 examples,
+  so training stops once validation loss stops improving instead of always running the full
+  50 epochs regardless of the dataset size. Smaller datasets (fewer than 10 examples) still use
+  the fixed-epoch path to avoid wasting a validation set that would be too small to be meaningful.
+- **Concurrency guard** (done): `fit()` acquires a per-user `threading.Lock` (stored in
+  `_train_locks`, protected by a `_lock_registry` mutex) before running training and persisting
+  weights, so concurrent `POST /api/prioritizer/train` calls for the same user are serialized
+  rather than racing on `ModelStore.save`.
+
+Still open within Phase 12:
+- JS unit tests for `views.js`/`app.js`/`api.js` — `client/test/Client_test.py` covers that the
+  static assets are served and the HTML shell contains expected elements, but the JS module logic
+  (DOM rendering helpers, filter/sort, recurrence field wiring) is untested beyond manual browser
+  checks. The plan: a Playwright-driven Python test file (`client/test/Js_test.py`) that loads
+  the app shell in a headless browser and exercises the JS functions in-browser via
+  `page.evaluate()` — same approach used for Phases 8, 9 and 13 verification.
+- Documentation: module-level docstrings for the server services and client JS modules beyond
+  this README.
+- Installation, uninstallation and update scripts, extending `scripts/run.sh` and
+  `scripts/reset_db.sh`.
+- `PrioritizerNetwork._cache` safety for multi-process/worker deployments — still a per-process
+  in-memory dict; fine for the current single-process dev server.
 
 ### Phase 13 — Top-level navigation & account settings (done)
 Phases 8-10 each added their own chunk of UI (editing/filtering, a week view, training status) on
@@ -692,25 +719,32 @@ roadmap phase that owns them (see above for full descriptions).
 - [x] Recurrence rule on a task (interval/unit, optional end date) - server schema + storage
 - [x] Completing a recurring task spawns its next occurrence instead of just marking it done
 - [x] "Repeats" control on the client task form, plus a recurring-task indicator in the task list
-### Phase 12 — Hardening & polish
-- [ ] JS unit tests for `views.js`/`app.js`/`api.js`
+### Phase 12 — Hardening & polish (in progress)
+- [ ] JS unit tests for `views.js`/`app.js`/`api.js` (Playwright-driven `client/test/Js_test.py`)
 - [ ] Create the documentation for the server
 - [ ] Create the documentation for the client
 - [ ] Create the installation script
 - [ ] Create the uninstallation script
 - [ ] Create the update script
-- [ ] Show a spinner on the Train button (and disable it) while `POST /api/prioritizer/train` is
-  in-flight (`app.js` train-button handler + `views.js` + CSS `@keyframes spin`)
-- [ ] Show a spinner in the Timetable's Today view (`#plan-list`) while `GET /api/plan/today` is
-  in-flight (call a `Views.showTodayPlanLoading()` helper at the top of `refreshTasksAndPlan`)
-- [ ] Show a spinner in the Timetable's This-week view (`#week-grid`) while `GET /api/plan/week`
-  is in-flight (call a `Views.showWeekPlanLoading()` helper at the top of `refreshWeekPlan`)
-- [ ] Normalize `FeatureExtractor`'s feature vector before it reaches `PrioritizerNetwork`
-- [ ] Batch `PrioritizerNetwork.score`'s `model.predict()` calls across a user's task list
-- [ ] Add a train/validation split or early stopping to `PrioritizerNetwork.fit`
-- [ ] Version persisted model weights against `FEATURE_ORDER`/`HIDDEN_UNITS` so architecture
-  changes fall back to formula-only scoring instead of crashing on load
-- [ ] Guard against concurrent `POST /api/prioritizer/train` calls for the same user
+- [x] Show a spinner on the Train button (and disable it) while `POST /api/prioritizer/train` is
+  in-flight (`app.js` + `Views.setTrainButtonLoading`, `views.js` + CSS `@keyframes spin`)
+- [x] Show a spinner in the Timetable's Today view (`#plan-list`) while `GET /api/plan/today` is
+  in-flight (`Views.showTodayPlanLoading()` called at the top of `refreshTasksAndPlan`)
+- [x] Show a spinner in the Timetable's This-week view (`#week-grid`) while `GET /api/plan/week`
+  is in-flight (`Views.showWeekPlanLoading()` called at the top of `refreshWeekPlan`)
+- [x] Normalize `FeatureExtractor`'s feature vector before it reaches `PrioritizerNetwork`
+  (`extract_normalized` + `normalize` on `FeatureExtractor`; network uses these in `score`/`fit`)
+- [x] Batch `PrioritizerNetwork.score_many`'s `model.predict()` calls across a user's task list
+  (`score_many` on `PrioritizerModel` interface; `PrioritizerNetwork` overrides with batched Keras
+  call; `PrioritizerService._scores` delegates to `score_many`)
+- [x] Add a train/validation split + early stopping to `PrioritizerNetwork.fit` (20 % val split +
+  `EarlyStopping(patience=5)` when ≥10 examples; fixed-epoch fallback for smaller datasets)
+- [x] Version persisted model weights against `FEATURE_ORDER`/`HIDDEN_UNITS` so architecture
+  changes fall back to formula-only scoring instead of crashing on load (`_WEIGHTS_FORMAT_VERSION`
+  + metadata dict in `_serialize`; graceful fallback in `_deserialize`; legacy list format still
+  accepted)
+- [x] Guard against concurrent `POST /api/prioritizer/train` calls for the same user (per-user
+  `threading.Lock` in `_train_locks`, protected by `_lock_registry` mutex)
 - [ ] Make `PrioritizerNetwork._cache` safe for a multi-process/worker deployment
 ### Phase 13 — Top-level navigation & account settings (done)
 - [x] Top nav bar switching between Tasks/Timetable/Prioritizer/Account windows client-side
