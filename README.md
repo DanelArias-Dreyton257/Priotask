@@ -4,6 +4,8 @@
 
 Priotask helps you manage and prioritize tasks for effective time management. Register your tasks and the app figures out what to work on today — not just ranked by importance, but converted into a concrete **hours-to-spend** recommendation per task that fits within your available time budget.
 
+Try it out! https://danelarias-dreyton257.github.io/Priotask/
+
 ## Getting Started
 Everything needed to run Priotask locally and try it end to end.
 
