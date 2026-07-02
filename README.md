@@ -63,7 +63,7 @@ Open `http://localhost:5500` in a browser:
 5. **Done** marks a task complete, **Delete** removes it, **Edit** turns the task into an inline form to change any of its fields (including its recurrence rule), and **Log hours** logs partial progress (subtracting from the task's remaining effort, auto-completing it once none is left); all of these refresh **Today's plan** automatically.
 6. Above the task list: **search by name**, **filter by type/sub-type**, **sort** by priority/deadline/type, and a **Show completed** checkbox to reveal done tasks (hidden by default). Overdue tasks are highlighted in red, and recurring tasks show a "🔁 repeats ..." badge. Type/sub-type on the task form (and the edit form) are dropdowns of categories you've already used, with a "+ Add new..." option for a new one.
 7. The **Prioritizer** window's **Train priority model** fits the user's neural network on their task history — the button is disabled and shows a spinner while training is in flight. It reports whether there was enough completion history to train on once it finishes. The status line shows whether a trained model is currently active and when it was last trained; **Reset model** (shown once a model is active) discards it and reverts to formula-only scoring. The model also re-fits automatically in the background every 5th task completion — no manual "Train" click needed once you have enough history.
-8. The **Account** window shows the logged-in user's username/email, and lets them update their email or change their password (the current password is verified server-side before the change is accepted). An account created via Google sign-in has no local password, so the window shows a "Signed in with Google" badge and hides the change-password form instead (it can still update its email). For Google-linked accounts, a **Google Drive backup** section also appears with **Backup to Google Drive** and **Restore from Google Drive** buttons (v1.2) — see [Google Drive backup/restore](#google-drive-backuprestore) below. **Delete account** permanently removes the account and all its data — type "DELETE" in the confirmation box to unlock the button; on success the app logs out automatically.
+8. The **Account** window shows the logged-in user's username/email, and lets them update their email or change their password (the current password is verified server-side before the change is accepted). An account created via Google sign-in has no local password, so the window shows a "Signed in with Google" badge and hides the change-password form instead (it can still update its email). For Google-linked accounts, a **Google Drive backup** section also appears with **Backup to Google Drive** and **Restore from Google Drive** buttons (v1.2) — see [Google Drive backup/restore](#google-drive-backuprestore) below, which since v1.2.1 also happens automatically right after a Google login if a backup exists and the account is otherwise empty. **Delete account** permanently removes the account and all its data — type "DELETE" in the confirmation box to unlock the button; on success the app logs out automatically.
 
 ### 5. Run the tests
 ```
@@ -72,7 +72,7 @@ python -m unittest discover -s client/test -p "*_test.py"
 ```
 The first command covers the server (Prioritizer, DailyPlanner, TaskManager, UserManager,
 AuthService, API, DB — 190 tests). The second covers the client: `Client_test.py` (smoke test
-that the page and static assets are served) and `Js_test.py` (49 Playwright-driven tests for
+that the page and static assets are served) and `Js_test.py` (57 Playwright-driven tests for
 `views.js`, `api.js` and `googleDrive.js`). The Playwright tests spin up the Flask client on a local ephemeral
 port and exercise the JS modules in a headless Chromium browser; they require
 `python -m playwright install chromium` once (the install scripts do this automatically).
@@ -199,6 +199,17 @@ For accounts signed in with Google, the Account window (v1.2) offers **Backup to
 - The client does the rest: on button click, `googleDrive.js` requests a short-lived OAuth access token for the `drive.appdata` scope via `google.accounts.oauth2` (a separate, incremental grant from the ID-token "Sign in with Google" flow — requested only when a backup/restore button is actually clicked), then uploads/downloads the exported JSON directly to a single file in the user's Drive **appDataFolder** — a hidden, per-app storage space that doesn't show up in the user's normal Drive UI and that only this app can read.
 - Restoring re-creates each task as-is (including its done/completed-at state) via `TaskManager.restore_task`, without replaying side effects like recurrence spawning or prioritizer auto-retraining that already happened once when the backup was taken.
 - The trained `PrioritizerNetwork` model itself is not included in the backup — only tasks. Retrain from the Prioritizer window after a restore if you had one.
+- **Auto-restore after Google login** (v1.2.1): right after signing in with Google specifically (not a
+  password login, and not a page-reload session resume), the client silently checks for an existing
+  backup and restores it automatically if the account has no tasks yet — the "lost my data to a
+  server DB reset, logged back in, got it back" path, with no manual click needed. It's deliberately
+  conservative on both ends: the Drive access token is requested with `prompt: 'none'`
+  (`GoogleDrive.requestAccessToken(clientId, { silent: true })`), so if you've never granted this app
+  Drive access before it fails immediately with no popup — auto-restore only ever "just works" once
+  you've used Backup/Restore manually at least once; and it never runs if the account already has
+  tasks, so a normal login into a populated account never re-imports duplicates. Any failure (no
+  grant yet, no backup file, a timed-out silent request) is a silent no-op — the manual buttons are
+  always still there as a fallback. See `app.js`'s exported `maybeAutoRestoreFromDrive`.
 
 ### Prioritization Engine
 Two models sit behind a common `PrioritizerModel` interface:
@@ -235,7 +246,7 @@ Priotask/
 │   │               └── app.js         # Controller: wires api.js + googleDrive.js + session.js + views.js
 │   └── test/
 │       ├── Client_test.py   # Smoke test: index page + static JS are served
-│       └── Js_test.py       # 49 Playwright-driven JS unit tests
+│       └── Js_test.py       # 57 Playwright-driven JS unit tests
 │
 └── server/
     ├── wsgi.py              # gunicorn entry point for production (server.wsgi:app)

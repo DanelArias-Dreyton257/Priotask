@@ -35,20 +35,41 @@ function getTokenClient(clientId) {
 // resolves with a short-lived OAuth access token. Must be called from
 // within a user gesture (e.g. a click handler) or the browser may block
 // the popup.
-export function requestAccessToken(clientId) {
+//
+// Pass { silent: true } (v1.2.1, used for auto-restore-after-login) to
+// request the token with prompt: 'none' instead - per the OAuth spec this
+// means Google must not show any UI, and fails immediately if the user
+// hasn't already granted drive.appdata access in a previous session. A
+// timeoutMs safety net rejects the promise if the callback never fires at
+// all, which silent flows can occasionally hit.
+export function requestAccessToken(clientId, { silent = false, timeoutMs = 4000 } = {}) {
     return new Promise((resolve, reject) => {
         const client = getTokenClient(clientId);
+        let settled = false;
+        const settle = (fn, value) => {
+            if (settled) return;
+            settled = true;
+            fn(value);
+        };
+
         client.callback = (response) => {
             if (response.error) {
-                reject(new Error(`Google Drive access was not granted (${response.error}).`));
+                settle(reject, new Error(`Google Drive access was not granted (${response.error}).`));
             } else {
-                resolve(response.access_token);
+                settle(resolve, response.access_token);
             }
         };
         client.error_callback = (error) => {
-            reject(new Error(error.message || "Google sign-in popup was closed before finishing."));
+            settle(reject, new Error(error.message || "Google sign-in popup was closed before finishing."));
         };
-        client.requestAccessToken();
+
+        if (silent) {
+            setTimeout(
+                () => settle(reject, new Error("Silent Google Drive authorization timed out.")),
+                timeoutMs,
+            );
+        }
+        client.requestAccessToken(silent ? { prompt: "none" } : undefined);
     });
 }
 

@@ -5,6 +5,14 @@ All notable changes to this project are documented here. The format follows
 follows [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
+### Added
+- Auto-restore after Google login: signing in with Google now silently checks for an existing
+  Google Drive backup and restores it automatically if the account has no tasks yet, covering
+  "lost my data to a server DB reset, logged back in, got it back" with no manual click needed.
+  Only ever runs silently (`prompt: 'none'`) — if you've never granted this app Drive access
+  before, it fails immediately with no popup rather than interrupting login, and it never runs
+  against an account that already has tasks, so a normal login into a populated account can't
+  re-import duplicates. See the README's "Google Drive backup/restore" section.
 
 ## [1.2.0] - 2026-07-02
 ### Added
