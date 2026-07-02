@@ -234,6 +234,43 @@ document.getElementById("register-form").addEventListener("submit", (event) => {
     }, { treatAuthErrorAsSessionExpiry: false });
 });
 
+// v1.2.1: after signing in with Google specifically (not password login,
+// not a resumed session), silently checks for an existing Google Drive
+// backup and restores it if the account has no tasks yet - covers "I lost
+// my data (e.g. a server DB reset), logged back in, got it back" without
+// the user having to remember to click the manual Restore button.
+//
+// Deliberately silent-only (prompt: 'none' inside GoogleDrive.requestAccessToken):
+// if the user has never granted Drive access before, this fails immediately
+// and we just skip - it never pops a consent dialog on login for someone who
+// has never touched the backup feature. Also skips entirely if the account
+// already has tasks, so a normal login into a populated account never
+// re-imports the backup.
+//
+// clientId is a parameter (not read from window.PRIOTASK_GOOGLE_CLIENT_ID
+// internally) so this can be exercised directly in tests without needing
+// the real GIS script loaded.
+export async function maybeAutoRestoreFromDrive(clientId) {
+    if (!clientId) return { restored: false };
+    try {
+        const tasks = await api.listTasks();
+        if (tasks.length > 0) return { restored: false };
+
+        const accessToken = await GoogleDrive.requestAccessToken(clientId, { silent: true });
+        const backup = await GoogleDrive.downloadBackup(accessToken);
+        if (!backup) return { restored: false };
+
+        const { imported } = await api.importBackup(backup);
+        if (imported > 0) await refreshTasksAndPlan();
+        return { restored: imported > 0, imported };
+    } catch (_error) {
+        // Best-effort: no prior Drive grant, no backup file, or the silent
+        // request timed out - the manual Restore button is still there as a
+        // fallback, so this never surfaces an error to the user.
+        return { restored: false };
+    }
+}
+
 // Sign in with Google (v1.1): only wired up when the server injected a
 // client ID (window.PRIOTASK_GOOGLE_CLIENT_ID), which also gates whether the
 // GIS script tag and the button container even exist in the page - so local
@@ -243,6 +280,10 @@ if (window.PRIOTASK_GOOGLE_CLIENT_ID) {
         runOrReportError(async () => {
             const { username } = await api.loginWithGoogle(response.credential);
             enterApp(username);
+            const { restored, imported } = await maybeAutoRestoreFromDrive(window.PRIOTASK_GOOGLE_CLIENT_ID);
+            if (restored) {
+                Views.showMessage(`Restored ${imported} task${imported === 1 ? "" : "s"} from your Google Drive backup.`);
+            }
         }, { treatAuthErrorAsSessionExpiry: false });
     }
 

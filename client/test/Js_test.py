@@ -714,7 +714,9 @@ window.google = {
         oauth2: {
             initTokenClient: (config) => ({
                 callback: config.callback,
-                requestAccessToken() {
+                requestAccessToken(overrideConfig) {
+                    window.__lastRequestAccessTokenConfig = overrideConfig || null;
+                    if (window.__fakeTokenNeverResponds) return;
                     if (window.__fakeTokenResponse.error) {
                         this.callback({ error: window.__fakeTokenResponse.error });
                     } else {
@@ -821,6 +823,158 @@ class GoogleDriveTest(_PlaywrightBase):
             return await GoogleDrive.downloadBackup('fake-token');
         }""")
         self.assertEqual(result['tasks'][0]['name'], 'restored')
+
+    def test_request_access_token_silent_passes_prompt_none(self):
+        self.page.evaluate(_FAKE_TOKEN_CLIENT_JS)
+        self.page.evaluate("window.__fakeTokenResponse = { access_token: 'fake-token-123' }")
+        self.js("""async () => {
+            const GoogleDrive = await import('/static/js/googleDrive.js');
+            await GoogleDrive.requestAccessToken('fake-client-id', { silent: true });
+        }""")
+        config = self.page.evaluate("window.__lastRequestAccessTokenConfig")
+        self.assertEqual(config, {'prompt': 'none'})
+
+    def test_request_access_token_non_silent_passes_no_override(self):
+        self.page.evaluate(_FAKE_TOKEN_CLIENT_JS)
+        self.page.evaluate("window.__fakeTokenResponse = { access_token: 'fake-token-123' }")
+        self.js("""async () => {
+            const GoogleDrive = await import('/static/js/googleDrive.js');
+            await GoogleDrive.requestAccessToken('fake-client-id');
+        }""")
+        config = self.page.evaluate("window.__lastRequestAccessTokenConfig")
+        self.assertIsNone(config)
+
+    def test_request_access_token_silent_times_out_if_callback_never_fires(self):
+        self.page.evaluate(_FAKE_TOKEN_CLIENT_JS)
+        self.page.evaluate("window.__fakeTokenNeverResponds = true")
+        result = self.js("""async () => {
+            const GoogleDrive = await import('/static/js/googleDrive.js');
+            try {
+                await GoogleDrive.requestAccessToken('fake-client-id', { silent: true, timeoutMs: 50 });
+                return { threw: false };
+            } catch (e) {
+                return { threw: true, message: e.message };
+            }
+        }""")
+        self.assertTrue(result['threw'])
+        self.assertIn('timed out', result['message'])
+
+
+# ---------------------------------------------------------------------------
+# app.js — maybeAutoRestoreFromDrive: auto-restore after Google login (v1.2.1)
+# ---------------------------------------------------------------------------
+
+class AutoRestoreAfterGoogleLoginTest(_PlaywrightBase):
+
+    def _set_token(self):
+        self.js("""async () => {
+            const { TokenStore } = await import('/static/js/session.js');
+            TokenStore.setToken('fake-token');
+        }""")
+
+    def _call_auto_restore(self, client_id='fake-client-id'):
+        return self.js(f"""async () => {{
+            const app = await import('/static/js/app.js');
+            return await app.maybeAutoRestoreFromDrive({client_id!r});
+        }}""")
+
+    def test_returns_false_immediately_when_no_client_id(self):
+        result = self._call_auto_restore(client_id='')
+        self.assertEqual(result, {'restored': False})
+
+    def test_skips_when_account_already_has_tasks(self):
+        self._set_token()
+        self.page.evaluate(_FAKE_TOKEN_CLIENT_JS)
+        self.page.evaluate("window.__fakeTokenResponse = { access_token: 'drive-token' }")
+
+        drive_calls = []
+
+        def drive_handle(route):
+            drive_calls.append(route.request.url)
+            route.fulfill(status=500)
+
+        self.page.route("https://www.googleapis.com/**", drive_handle)
+        self.page.route("**/api/tasks", lambda route: route.fulfill(
+            status=200, content_type="application/json", body='[{"task_id": 1, "name": "existing"}]',
+        ))
+
+        result = self._call_auto_restore()
+
+        self.assertEqual(result, {'restored': False})
+        self.assertEqual(drive_calls, [])  # never even asked Drive, since tasks already exist
+
+    def test_skips_silently_when_drive_access_never_granted(self):
+        self._set_token()
+        self.page.evaluate(_FAKE_TOKEN_CLIENT_JS)
+        self.page.evaluate("window.__fakeTokenResponse = { error: 'access_denied' }")
+        self.page.route("**/api/tasks", lambda route: route.fulfill(
+            status=200, content_type="application/json", body="[]",
+        ))
+
+        drive_calls = []
+
+        def drive_handle(route):
+            drive_calls.append(route.request.url)
+            route.fulfill(status=500)
+
+        self.page.route("https://www.googleapis.com/**", drive_handle)
+
+        result = self._call_auto_restore()
+
+        self.assertEqual(result, {'restored': False})
+        self.assertEqual(drive_calls, [])  # silent grant denied, never even reached Drive
+
+    def test_skips_when_no_backup_file_exists(self):
+        self._set_token()
+        self.page.evaluate(_FAKE_TOKEN_CLIENT_JS)
+        self.page.evaluate("window.__fakeTokenResponse = { access_token: 'drive-token' }")
+        self.page.route("**/api/tasks", lambda route: route.fulfill(
+            status=200, content_type="application/json", body="[]",
+        ))
+        self.page.route(
+            "https://www.googleapis.com/**",
+            lambda route: route.fulfill(status=200, content_type="application/json", body='{"files": []}'),
+        )
+
+        result = self._call_auto_restore()
+
+        self.assertEqual(result, {'restored': False})
+
+    def test_restores_when_account_is_empty_and_backup_exists(self):
+        self._set_token()
+        self.page.evaluate(_FAKE_TOKEN_CLIENT_JS)
+        self.page.evaluate("window.__fakeTokenResponse = { access_token: 'drive-token' }")
+
+        self.page.route("**/api/tasks", lambda route: route.fulfill(
+            status=200, content_type="application/json", body="[]",
+        ))
+        self.page.route("**/api/plan/today*", lambda route: route.fulfill(
+            status=200, content_type="application/json", body="[]",
+        ))
+
+        def drive_handle(route):
+            if "q=name" in route.request.url:
+                route.fulfill(status=200, content_type="application/json", body='{"files": [{"id": "file-1"}]}')
+            else:
+                route.fulfill(
+                    status=200, content_type="application/json",
+                    body='{"format": "priotask-backup", "version": 1, "tasks": [{"name": "restored task"}]}',
+                )
+
+        self.page.route("https://www.googleapis.com/**", drive_handle)
+
+        import_requests = []
+
+        def import_handle(route):
+            import_requests.append(route.request.post_data)
+            route.fulfill(status=200, content_type="application/json", body='{"imported": 1}')
+
+        self.page.route("**/api/users/me/backup/restore", import_handle)
+
+        result = self._call_auto_restore()
+
+        self.assertEqual(result, {'restored': True, 'imported': 1})
+        self.assertEqual(len(import_requests), 1)
 
 
 if __name__ == "__main__":
