@@ -641,5 +641,187 @@ class WeekPlanViewsTest(_PlaywrightBase):
         self.assertTrue(result['monthActive'])
 
 
+# ---------------------------------------------------------------------------
+# views.js — renderAccount / Drive button loading state (v1.2)
+# ---------------------------------------------------------------------------
+
+class AccountViewsTest(_PlaywrightBase):
+
+    def _render_account(self, google_linked, has_password=True):
+        return self.js(f"""async () => {{
+            const {{ Views }} = await import('/static/js/views.js');
+            Views.renderAccount({{
+                username: 'alice', email: 'alice@example.com',
+                has_password: {str(has_password).lower()}, google_linked: {str(google_linked).lower()},
+            }});
+            return {{
+                badgeHidden: document.getElementById('account-google-badge').classList.contains('hidden'),
+                backupSectionHidden: document.getElementById('google-backup-section').classList.contains('hidden'),
+            }};
+        }}""")
+
+    def test_render_account_shows_backup_section_when_google_linked(self):
+        result = self._render_account(google_linked=True)
+        self.assertFalse(result['badgeHidden'])
+        self.assertFalse(result['backupSectionHidden'])
+
+    def test_render_account_hides_backup_section_when_not_google_linked(self):
+        result = self._render_account(google_linked=False)
+        self.assertTrue(result['badgeHidden'])
+        self.assertTrue(result['backupSectionHidden'])
+
+    def test_set_drive_button_loading_true_disables_both_buttons_and_shows_spinner(self):
+        result = self.js("""async () => {
+            const { Views } = await import('/static/js/views.js');
+            Views.setDriveButtonLoading('backup-to-drive-button', true, 'Backing up...');
+            const clicked = document.getElementById('backup-to-drive-button');
+            const other = document.getElementById('restore-from-drive-button');
+            return {
+                clickedDisabled: clicked.disabled,
+                otherDisabled: other.disabled,
+                hasSpinner: clicked.innerHTML.includes('spinner'),
+            };
+        }""")
+        self.assertTrue(result['clickedDisabled'])
+        self.assertTrue(result['otherDisabled'])
+        self.assertTrue(result['hasSpinner'])
+
+    def test_set_drive_button_loading_false_re_enables_both_buttons_and_restores_text(self):
+        result = self.js("""async () => {
+            const { Views } = await import('/static/js/views.js');
+            Views.setDriveButtonLoading('backup-to-drive-button', true, 'Backing up...');
+            Views.setDriveButtonLoading('backup-to-drive-button', false);
+            const clicked = document.getElementById('backup-to-drive-button');
+            const other = document.getElementById('restore-from-drive-button');
+            return {
+                clickedDisabled: clicked.disabled,
+                otherDisabled: other.disabled,
+                text: clicked.textContent,
+            };
+        }""")
+        self.assertFalse(result['clickedDisabled'])
+        self.assertFalse(result['otherDisabled'])
+        self.assertIn('Backup', result['text'])
+
+
+# ---------------------------------------------------------------------------
+# googleDrive.js — OAuth token acquisition + Drive REST calls (v1.2)
+# ---------------------------------------------------------------------------
+
+_FAKE_TOKEN_CLIENT_JS = """
+window.google = {
+    accounts: {
+        oauth2: {
+            initTokenClient: (config) => ({
+                callback: config.callback,
+                requestAccessToken() {
+                    if (window.__fakeTokenResponse.error) {
+                        this.callback({ error: window.__fakeTokenResponse.error });
+                    } else {
+                        this.callback({ access_token: window.__fakeTokenResponse.access_token });
+                    }
+                },
+            }),
+        },
+    },
+};
+"""
+
+
+class GoogleDriveTest(_PlaywrightBase):
+
+    def test_request_access_token_resolves_with_token_on_success(self):
+        self.page.evaluate(_FAKE_TOKEN_CLIENT_JS)
+        self.page.evaluate("window.__fakeTokenResponse = { access_token: 'fake-token-123' }")
+        token = self.js("""async () => {
+            const GoogleDrive = await import('/static/js/googleDrive.js');
+            return await GoogleDrive.requestAccessToken('fake-client-id');
+        }""")
+        self.assertEqual(token, 'fake-token-123')
+
+    def test_request_access_token_rejects_when_grant_denied(self):
+        self.page.evaluate(_FAKE_TOKEN_CLIENT_JS)
+        self.page.evaluate("window.__fakeTokenResponse = { error: 'access_denied' }")
+        result = self.js("""async () => {
+            const GoogleDrive = await import('/static/js/googleDrive.js');
+            try {
+                await GoogleDrive.requestAccessToken('fake-client-id');
+                return { threw: false };
+            } catch (e) {
+                return { threw: true, message: e.message };
+            }
+        }""")
+        self.assertTrue(result['threw'])
+        self.assertIn('access_denied', result['message'])
+
+    def test_upload_backup_creates_new_file_when_none_exists(self):
+        requests = []
+
+        def handle(route):
+            requests.append((route.request.method, route.request.url, route.request.post_data))
+            if "q=name" in route.request.url:
+                route.fulfill(status=200, content_type="application/json", body='{"files": []}')
+            else:
+                route.fulfill(status=200, content_type="application/json", body='{"id": "new-file-id"}')
+
+        self.page.route("https://www.googleapis.com/**", handle)
+        result = self.js("""async () => {
+            const GoogleDrive = await import('/static/js/googleDrive.js');
+            return await GoogleDrive.uploadBackup('fake-token', { format: 'priotask-backup', tasks: [] });
+        }""")
+        self.assertEqual(result['id'], 'new-file-id')
+        create_requests = [r for r in requests if r[0] == "POST" and "uploadType=multipart" in r[1]]
+        self.assertEqual(len(create_requests), 1)
+        self.assertIn('"parents":["appDataFolder"]', create_requests[0][2])
+
+    def test_upload_backup_overwrites_existing_file(self):
+        requests = []
+
+        def handle(route):
+            requests.append((route.request.method, route.request.url, route.request.post_data))
+            if "q=name" in route.request.url:
+                route.fulfill(status=200, content_type="application/json", body='{"files": [{"id": "existing-1"}]}')
+            else:
+                route.fulfill(status=200, content_type="application/json", body='{"id": "existing-1"}')
+
+        self.page.route("https://www.googleapis.com/**", handle)
+        self.js("""async () => {
+            const GoogleDrive = await import('/static/js/googleDrive.js');
+            await GoogleDrive.uploadBackup('fake-token', { format: 'priotask-backup', tasks: [] });
+        }""")
+        update_requests = [r for r in requests if r[0] == "PATCH"]
+        self.assertEqual(len(update_requests), 1)
+        self.assertIn("files/existing-1", update_requests[0][1])
+        self.assertIn("uploadType=media", update_requests[0][1])
+
+    def test_download_backup_returns_null_when_no_backup_file_exists(self):
+        self.page.route(
+            "https://www.googleapis.com/**",
+            lambda route: route.fulfill(status=200, content_type="application/json", body='{"files": []}'),
+        )
+        result = self.js("""async () => {
+            const GoogleDrive = await import('/static/js/googleDrive.js');
+            return await GoogleDrive.downloadBackup('fake-token');
+        }""")
+        self.assertIsNone(result)
+
+    def test_download_backup_returns_parsed_backup_content(self):
+        def handle(route):
+            if "q=name" in route.request.url:
+                route.fulfill(status=200, content_type="application/json", body='{"files": [{"id": "file-1"}]}')
+            else:
+                route.fulfill(
+                    status=200, content_type="application/json",
+                    body='{"format": "priotask-backup", "version": 1, "tasks": [{"name": "restored"}]}',
+                )
+
+        self.page.route("https://www.googleapis.com/**", handle)
+        result = self.js("""async () => {
+            const GoogleDrive = await import('/static/js/googleDrive.js');
+            return await GoogleDrive.downloadBackup('fake-token');
+        }""")
+        self.assertEqual(result['tasks'][0]['name'], 'restored')
+
+
 if __name__ == "__main__":
     unittest.main()

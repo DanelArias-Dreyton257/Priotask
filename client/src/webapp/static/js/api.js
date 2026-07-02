@@ -128,6 +128,14 @@ export class ApiClient {
     deleteAccount() {
         return this._request("DELETE", "/api/users/me", { auth: true });
     }
+
+    exportBackup() {
+        return this._request("GET", "/api/users/me/backup", { auth: true });
+    }
+
+    importBackup(backup) {
+        return this._request("POST", "/api/users/me/backup/restore", { body: backup, auth: true });
+    }
 }
 
 export { ApiError };

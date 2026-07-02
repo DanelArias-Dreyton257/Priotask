@@ -160,6 +160,26 @@ export const Views = {
         // letting it fail on every submit.
         document.getElementById("change-password-form").classList.toggle("hidden", !has_password);
         document.getElementById("account-no-password-hint").classList.toggle("hidden", !!has_password);
+        // v1.2: Drive backup/restore only makes sense for accounts that can
+        // re-authenticate with Google to grant Drive access later.
+        document.getElementById("google-backup-section").classList.toggle("hidden", !google_linked);
+    },
+
+    // v1.2: disables the backup/restore buttons and shows a spinner on
+    // whichever one was clicked while the Drive round-trip is in flight.
+    setDriveButtonLoading(buttonId, loading, loadingText) {
+        const button = document.getElementById(buttonId);
+        const other = document.getElementById(
+            buttonId === "backup-to-drive-button" ? "restore-from-drive-button" : "backup-to-drive-button",
+        );
+        other.disabled = loading;
+        button.disabled = loading;
+        if (loading) {
+            button.dataset.originalText = button.textContent;
+            button.innerHTML = `<span class='spinner'></span> ${loadingText}`;
+        } else {
+            button.textContent = button.dataset.originalText || button.textContent;
+        }
     },
 
     // Phase 10: surfaces whether the user's PrioritizerNetwork is trained

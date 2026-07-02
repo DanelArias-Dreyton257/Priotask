@@ -6,6 +6,7 @@
  * of its own.
  */
 import { ApiClient, ApiError } from "./api.js";
+import * as GoogleDrive from "./googleDrive.js";
 import { TokenStore } from "./session.js";
 import { Views } from "./views.js";
 
@@ -264,6 +265,45 @@ if (window.PRIOTASK_GOOGLE_CLIENT_ID) {
     } else {
         window.onGoogleLibraryLoad = initGoogleSignIn;
     }
+
+    // Google Drive backup/restore (v1.2): a separate, incremental OAuth grant
+    // (drive.appdata scope) from the ID-token sign-in above, requested only
+    // when the user actually clicks one of these buttons. Only wired up
+    // alongside Google sign-in itself since restore/backup are only shown to
+    // google_linked accounts (Views.renderAccount).
+    document.getElementById("backup-to-drive-button").addEventListener("click", () => {
+        runOrReportError(async () => {
+            Views.setDriveButtonLoading("backup-to-drive-button", true, "Backing up...");
+            try {
+                const accessToken = await GoogleDrive.requestAccessToken(window.PRIOTASK_GOOGLE_CLIENT_ID);
+                const backup = await api.exportBackup();
+                await GoogleDrive.uploadBackup(accessToken, backup);
+                const count = backup.tasks.length;
+                Views.showMessage(`Backed up ${count} task${count === 1 ? "" : "s"} to Google Drive.`);
+            } finally {
+                Views.setDriveButtonLoading("backup-to-drive-button", false);
+            }
+        });
+    });
+
+    document.getElementById("restore-from-drive-button").addEventListener("click", () => {
+        runOrReportError(async () => {
+            Views.setDriveButtonLoading("restore-from-drive-button", true, "Restoring...");
+            try {
+                const accessToken = await GoogleDrive.requestAccessToken(window.PRIOTASK_GOOGLE_CLIENT_ID);
+                const backup = await GoogleDrive.downloadBackup(accessToken);
+                if (!backup) {
+                    Views.showMessage("No backup found in your Google Drive yet.", true);
+                    return;
+                }
+                const { imported } = await api.importBackup(backup);
+                Views.showMessage(`Restored ${imported} task${imported === 1 ? "" : "s"} from Google Drive.`);
+                await refreshTasksAndPlan();
+            } finally {
+                Views.setDriveButtonLoading("restore-from-drive-button", false);
+            }
+        });
+    });
 }
 
 document.getElementById("logout-button").addEventListener("click", () => {
