@@ -22,5 +22,7 @@ dependencies:
       - flask
       # Phase 6: PrioritizerNetwork (per-user neural net)
       - tensorflow
+      # v1.1: verifies Google ID tokens for "Sign in with Google"
+      - google-auth
       # Browser-driven manual/E2E verification of the client UI
       - playwright

@@ -87,6 +87,79 @@ class AuthServiceTest(unittest.TestCase):
         self.assertIsNotNone(self.auth.resolve_token(token_a))
         self.assertIsNotNone(self.auth.resolve_token(token_b))
 
+    # --- v1.1: Sign in with Google ---
+
+    def _make_auth_with_verifier(self, claims=None, raises=False):
+        db = DB(":memory:").connect()
+        self.addCleanup(db.close)
+        user_manager = UserManager(UserDAO(db))
+
+        def fake_verifier(id_token_str, client_id):
+            if raises:
+                raise ValueError("bad token")
+            return claims
+
+        auth = AuthService(
+            user_manager, SessionDAO(db),
+            google_client_id="test-client-id", google_verifier=fake_verifier,
+        )
+        return auth, user_manager
+
+    def test_login_with_google_without_client_id_returns_none(self):
+        auth, _ = self._make_auth_with_verifier(claims={"sub": "g1", "email": "a@x.com", "email_verified": True})
+        auth.google_client_id = None
+        self.assertIsNone(auth.login_with_google("tok"))
+
+    def test_login_with_google_creates_new_account(self):
+        auth, user_manager = self._make_auth_with_verifier(
+            claims={"sub": "g1", "email": "newbie@x.com", "email_verified": True}
+        )
+        result = auth.login_with_google("tok")
+        self.assertIsNotNone(result)
+        token, username = result
+        self.assertIsInstance(token, str)
+        user = user_manager.get_user_by_username(username)
+        self.assertEqual(user.email, "newbie@x.com")
+        self.assertTrue(user.google_linked)
+        self.assertFalse(user.has_password)
+
+    def test_login_with_google_reuses_existing_google_account(self):
+        auth, user_manager = self._make_auth_with_verifier(
+            claims={"sub": "g1", "email": "newbie@x.com", "email_verified": True}
+        )
+        _, username_a = auth.login_with_google("tok")
+        _, username_b = auth.login_with_google("tok")
+        self.assertEqual(username_a, username_b)
+
+    def test_login_with_google_links_existing_email_account(self):
+        db = DB(":memory:").connect()
+        self.addCleanup(db.close)
+        user_manager = UserManager(UserDAO(db))
+        user_manager.create_user("alice", "s3cret!!", "alice@example.com")
+
+        def fake_verifier(id_token_str, client_id):
+            return {"sub": "g2", "email": "alice@example.com", "email_verified": True}
+
+        auth = AuthService(
+            user_manager, SessionDAO(db),
+            google_client_id="test-client-id", google_verifier=fake_verifier,
+        )
+        _, username = auth.login_with_google("tok")
+        self.assertEqual(username, "alice")
+        user = user_manager.get_user_by_username("alice")
+        self.assertTrue(user.google_linked)
+        self.assertTrue(user.has_password)
+
+    def test_login_with_google_rejects_unverified_email(self):
+        auth, _ = self._make_auth_with_verifier(
+            claims={"sub": "g1", "email": "a@x.com", "email_verified": False}
+        )
+        self.assertIsNone(auth.login_with_google("tok"))
+
+    def test_login_with_google_rejects_invalid_token(self):
+        auth, _ = self._make_auth_with_verifier(raises=True)
+        self.assertIsNone(auth.login_with_google("tok"))
+
 
 if __name__ == "__main__":
     unittest.main()

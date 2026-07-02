@@ -5,9 +5,10 @@ SCHEMA = """
 CREATE TABLE IF NOT EXISTS users (
     user_id INTEGER PRIMARY KEY AUTOINCREMENT,
     username TEXT UNIQUE NOT NULL,
-    password_hash BLOB NOT NULL,
-    password_salt BLOB NOT NULL,
-    email TEXT NOT NULL
+    password_hash BLOB,
+    password_salt BLOB,
+    email TEXT NOT NULL,
+    google_sub TEXT
 );
 
 CREATE TABLE IF NOT EXISTS tasks (
@@ -63,6 +64,13 @@ _TASKS_RECURRENCE_COLUMNS = {
     "recurrence_end_date": "TEXT",
 }
 
+# v1.1 (Google sign-in) added a nullable `google_sub` column to `users`, plus
+# relaxed `password_hash`/`password_salt` to nullable (Google-only accounts
+# have no local password). SQLite's ALTER TABLE can add a column but can't
+# drop a NOT NULL constraint, so only the new column is migrated here for an
+# existing on-disk DB; one predating this change and still carrying the old
+# NOT NULL constraint should be recreated with `./scripts/reset_db.sh`.
+
 
 class DB:
     """
@@ -84,6 +92,7 @@ class DB:
         self.connection.execute("PRAGMA foreign_keys = ON")
         self.connection.executescript(SCHEMA)
         self._migrate_tasks_recurrence_columns()
+        self._migrate_users_google_sub_column()
         self.connection.commit()
         return self
 
@@ -92,6 +101,15 @@ class DB:
         for column, sql_type in _TASKS_RECURRENCE_COLUMNS.items():
             if column not in existing:
                 self.connection.execute(f"ALTER TABLE tasks ADD COLUMN {column} {sql_type}")
+
+    def _migrate_users_google_sub_column(self) -> None:
+        existing = {row["name"] for row in self.connection.execute("PRAGMA table_info(users)")}
+        if "google_sub" not in existing:
+            self.connection.execute("ALTER TABLE users ADD COLUMN google_sub TEXT")
+        self.connection.execute(
+            "CREATE UNIQUE INDEX IF NOT EXISTS idx_users_google_sub "
+            "ON users (google_sub) WHERE google_sub IS NOT NULL"
+        )
 
     def execute(self, query: str, params: Sequence[Any] = ()) -> sqlite3.Cursor:
         cursor = self.connection.execute(query, params)
