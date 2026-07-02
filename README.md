@@ -48,13 +48,14 @@ Steps 2 and 3 can be replaced with one command: `./scripts/run.sh` (see [Scripts
 ### 4. Try it
 Open `http://localhost:5500` in a browser:
 1. **Register** a user (or **Log in** if you already have one) — registering logs you in automatically.
+   If `PRIOTASK_GOOGLE_CLIENT_ID` is configured (see [One-time environment setup](#one-time-environment-setup)), a **Sign in with Google** button appears above the forms — it creates an account automatically on first use (or links Google to an existing account with the same, verified email) and needs no password.
 2. Once logged in, a **Tasks / Timetable / Prioritizer / Account** nav bar switches between four windows client-side with no page reload; it always opens on **Timetable**, so you land on "what to work on" rather than the raw task list.
 3. The **Timetable** window has three plan tabs: **Today**, **This week**, and **This month**. "This week" shows a weekday-aligned 7-column grid (Mon–Sun headers; today lands in its real weekday column; columns before today show the following week's days as muted full-content cards — a "next week preview"). "This month" shows the same day-cards wrapped into 5–6 rows covering the rest of the current calendar month. Both range views share the "Hours available per day" + **Refresh** form; the "Today" tab has its own separate hours + **Refresh plan** form. Each day card shows planned tasks/hours, a load bar, and any deadlines falling on that day.
 4. In the **Tasks** window, add a task with the **New task** form (name, deadline, effort in hours, importance 1–10). It shows up under **Your tasks**, and the **Timetable** window's "Today's plan" shows the recommended hours to spend on it today alongside its priority rank. The **Repeats** dropdown lets it recur daily/weekly/monthly (with an "every N" interval and an optional end date) — completing a recurring task automatically spawns its next occurrence with the deadline advanced by the rule instead of just marking it done.
 5. **Done** marks a task complete, **Delete** removes it, **Edit** turns the task into an inline form to change any of its fields (including its recurrence rule), and **Log hours** logs partial progress (subtracting from the task's remaining effort, auto-completing it once none is left); all of these refresh **Today's plan** automatically.
 6. Above the task list: **search by name**, **filter by type/sub-type**, **sort** by priority/deadline/type, and a **Show completed** checkbox to reveal done tasks (hidden by default). Overdue tasks are highlighted in red, and recurring tasks show a "🔁 repeats ..." badge. Type/sub-type on the task form (and the edit form) are dropdowns of categories you've already used, with a "+ Add new..." option for a new one.
 7. The **Prioritizer** window's **Train priority model** fits the user's neural network on their task history — the button is disabled and shows a spinner while training is in flight. It reports whether there was enough completion history to train on once it finishes. The status line shows whether a trained model is currently active and when it was last trained; **Reset model** (shown once a model is active) discards it and reverts to formula-only scoring. The model also re-fits automatically in the background every 5th task completion — no manual "Train" click needed once you have enough history.
-8. The **Account** window shows the logged-in user's username/email, and lets them update their email or change their password (the current password is verified server-side before the change is accepted). **Delete account** permanently removes the account and all its data — type "DELETE" in the confirmation box to unlock the button; on success the app logs out automatically.
+8. The **Account** window shows the logged-in user's username/email, and lets them update their email or change their password (the current password is verified server-side before the change is accepted). An account created via Google sign-in has no local password, so the window shows a "Signed in with Google" badge and hides the change-password form instead (it can still update its email). **Delete account** permanently removes the account and all its data — type "DELETE" in the confirmation box to unlock the button; on success the app logs out automatically.
 
 ### 5. Run the tests
 ```
@@ -62,8 +63,8 @@ python -m unittest discover -s server/test -p "*_test.py"
 python -m unittest discover -s client/test -p "*_test.py"
 ```
 The first command covers the server (Prioritizer, DailyPlanner, TaskManager, UserManager,
-AuthService, API — 144 tests). The second covers the client: `Client_test.py` (smoke test
-that the page and static assets are served) and `Js_test.py` (42 Playwright-driven tests for
+AuthService, API — 170 tests). The second covers the client: `Client_test.py` (smoke test
+that the page and static assets are served) and `Js_test.py` (43 Playwright-driven tests for
 `views.js` and `api.js`). The Playwright tests spin up the Flask client on a local ephemeral
 port and exercise the JS modules in a headless Chromium browser; they require
 `python -m playwright install chromium` once (the install scripts do this automatically).
@@ -123,6 +124,18 @@ These are one-off steps in the GitHub/Render UIs, not run by any workflow:
 4. Add the Render service's Deploy Hook URL as the repo secret
    `RENDER_DEPLOY_HOOK_URL` (Settings → Secrets and variables → Actions →
    Secrets).
+5. (Optional) To enable **Sign in with Google**: create an OAuth 2.0 Client
+   ID in [Google Cloud Console](https://console.cloud.google.com/apis/credentials)
+   (Application type: "Web application"). Under Authorized JavaScript
+   origins, add the GitHub Pages origin (and `http://localhost:5500` for
+   local dev) — no redirect URI is needed, since the client only ever
+   receives an ID token via Google Identity Services, never a redirect. Add
+   the resulting Client ID as the repo variable `GOOGLE_CLIENT_ID` (baked into
+   the built static site by `scripts/build_static_site.py`), and set the same
+   value as `PRIOTASK_GOOGLE_CLIENT_ID` on the Render service (already present
+   in `render.yaml` with `sync: false`, so it's entered once in Render's
+   dashboard). Leaving this unset disables the feature everywhere — no button
+   on the client, and the server's `/api/auth/google` returns 503.
 
 ### Known limitation
 Render's free tier has an ephemeral filesystem (no persistent disk without a
@@ -202,7 +215,7 @@ Priotask/
     │   ├── api/
     │   │   ├── app.py             # create_app(): wires DB/managers/services, registers blueprints, CORS
     │   │   ├── auth.py            # require_auth decorator (Bearer token → g.user_id)
-    │   │   ├── user_routes.py     # POST /users, /auth/login, /auth/logout,
+    │   │   ├── user_routes.py     # POST /users, /auth/login, /auth/google, /auth/logout,
     │   │   │                      # GET|PUT /users/me, POST /users/me/password, DELETE /users/me
     │   │   ├── task_routes.py     # CRUD for /tasks (+ /complete, /log-hours)
     │   │   ├── plan_routes.py     # GET /plan/today, GET /plan/week
@@ -218,9 +231,10 @@ Priotask/
     │       ├── TaskManager.py      # Task CRUD, completion snapshots, partial-hours logging,
     │       │                       # recurrence spawning, auto-retrain callback
     │       ├── Recurrence.py       # next_deadline(): day/week/month date arithmetic
-    │       ├── UserManager.py      # User CRUD + password hashing (PBKDF2-HMAC-SHA256)
-    │       ├── AuthService.py      # Bearer token issuing/lookup; DB-persisted sessions
-    │       │                       # with sliding expiry and multi-device support
+    │       ├── UserManager.py      # User CRUD + password hashing (PBKDF2-HMAC-SHA256);
+    │       │                       # Google account creation/linking
+    │       ├── AuthService.py      # Bearer token issuing/lookup; DB-persisted sessions with
+    │       │                       # sliding expiry, multi-device support, Google ID token login
     │       └── Prioritizer/
     │           ├── PrioritizerModel.py     # Common interface: score(task, reference_date)
     │           ├── FormulaPrioritizer.py   # Closed-form model from tareas_spec.pdf

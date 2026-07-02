@@ -5,6 +5,17 @@ All notable changes to this project are documented here. The format follows
 follows [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
+
+## [1.1.0] - 2026-07-02
+### Added
+- Sign in with Google: a Google Identity Services button on the login screen verifies
+  a Google ID token server-side (`AuthService.login_with_google`) and issues a normal Priotask
+  session — creating a new account on first use, or linking to an existing password account with
+  the same verified email. Google-only accounts have no local password; the Account window shows
+  a "Signed in with Google" badge and hides the change-password form for them. Disabled entirely
+  (no button, `/api/auth/google` returns 503) unless `PRIOTASK_GOOGLE_CLIENT_ID` is configured.
+  Requires a Google Cloud OAuth Client ID — see the README's "One-time environment setup".
+
 ### Docs
 - Link to the [GitHub Pages deployment history](https://github.com/DanelArias-Dreyton257/Priotask/deployments/github-pages) from the README's Deployment section.
 
@@ -36,6 +47,7 @@ Phases 1-15:
   task via water-filling against the available daily hours budget.
 - 144 server-side tests and 42 client-side (Playwright-driven) tests.
 
-[Unreleased]: https://github.com/DanelArias-Dreyton257/Priotask/compare/v1.0.1...HEAD
+[Unreleased]: https://github.com/DanelArias-Dreyton257/Priotask/compare/v1.1.0...HEAD
+[1.1.0]: https://github.com/DanelArias-Dreyton257/Priotask/compare/v1.0.1...v1.1.0
 [1.0.1]: https://github.com/DanelArias-Dreyton257/Priotask/compare/v1.0.0...v1.0.1
 [1.0.0]: https://github.com/DanelArias-Dreyton257/Priotask/releases/tag/v1.0.0
