@@ -1,5 +1,6 @@
 import os
 
+from dotenv import load_dotenv
 from flask import Flask, render_template
 
 DEFAULT_API_BASE_URL = "http://localhost:5000"
@@ -28,6 +29,10 @@ def create_app(api_base_url: str = DEFAULT_API_BASE_URL, google_client_id: str =
 
 
 def main():
+    # Local dev convenience (v1.2): see the matching comment in Server.py -
+    # the built static site (scripts/build_static_site.py) never calls this
+    # either, so .env only ever affects `python -m client.src.Client`.
+    load_dotenv()
     api_base_url = os.environ.get("PRIOTASK_API_BASE_URL", DEFAULT_API_BASE_URL)
     google_client_id = os.environ.get("PRIOTASK_GOOGLE_CLIENT_ID", "")
     app = create_app(api_base_url, google_client_id)
