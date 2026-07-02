@@ -151,9 +151,15 @@ export const Views = {
         }
     },
 
-    renderAccount({ username, email }) {
+    renderAccount({ username, email, has_password, google_linked }) {
         document.getElementById("account-username").textContent = username;
         document.getElementById("account-email").textContent = email;
+        document.getElementById("account-google-badge").classList.toggle("hidden", !google_linked);
+        // A Google-only account (no local password set) has nothing for
+        // "change password" to verify against - hide the form instead of
+        // letting it fail on every submit.
+        document.getElementById("change-password-form").classList.toggle("hidden", !has_password);
+        document.getElementById("account-no-password-hint").classList.toggle("hidden", !!has_password);
     },
 
     // Phase 10: surfaces whether the user's PrioritizerNetwork is trained

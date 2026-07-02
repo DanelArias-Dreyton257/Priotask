@@ -3,6 +3,7 @@ Flask application factory (create_app). Wires the DB, DAOs, managers and
 services together, registers all API blueprints, and enables CORS for the
 browser client on a different origin/port.
 """
+import os
 import threading
 
 from flask import Flask, request
@@ -37,7 +38,11 @@ def create_app(db_path: str = "priotask.db") -> Flask:
 
     db = DB(db_path).connect()
     app.user_manager = UserManager(UserDAO(db))
-    app.auth_service = AuthService(app.user_manager, SessionDAO(db))
+    # v1.1: unset (default) disables Google sign-in; /auth/google reports 503.
+    app.config["GOOGLE_CLIENT_ID"] = os.environ.get("PRIOTASK_GOOGLE_CLIENT_ID")
+    app.auth_service = AuthService(
+        app.user_manager, SessionDAO(db), google_client_id=app.config["GOOGLE_CLIENT_ID"]
+    )
 
     # PrioritizerNetwork falls back to FormulaPrioritizer's own score until a
     # user has a trained network stored, so wiring it in here is a no-op for

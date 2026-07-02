@@ -29,7 +29,7 @@ jobs:
         run: pip install jinja2
 
       - name: Build static site
-        run: python scripts/build_static_site.py "${{ vars.PROD_API_BASE_URL }}"
+        run: python scripts/build_static_site.py "${{ vars.PROD_API_BASE_URL }}" "${{ vars.GOOGLE_CLIENT_ID }}"
 
       - uses: actions/configure-pages@v5
 

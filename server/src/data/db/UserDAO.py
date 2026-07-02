@@ -23,6 +23,25 @@ class UserDAO(object):
         query = "SELECT * FROM users WHERE user_id = ?"
         return self.db.execute(query, (user_id,)).fetchone()
 
+    def get_user_by_google_sub(self, google_sub: str) -> Optional[sqlite3.Row]:
+        query = "SELECT * FROM users WHERE google_sub = ?"
+        return self.db.execute(query, (google_sub,)).fetchone()
+
+    def get_user_by_email(self, email: str) -> Optional[sqlite3.Row]:
+        query = "SELECT * FROM users WHERE email = ?"
+        return self.db.execute(query, (email,)).fetchone()
+
+    def add_google_user(self, username: str, email: str, google_sub: str) -> int:
+        cursor = self.db.execute(
+            "INSERT INTO users (username, password_hash, password_salt, email, google_sub) "
+            "VALUES (?, NULL, NULL, ?, ?)",
+            (username, email, google_sub),
+        )
+        return cursor.lastrowid
+
+    def set_google_sub(self, user_id: int, google_sub: str) -> None:
+        self.db.execute("UPDATE users SET google_sub = ? WHERE user_id = ?", (google_sub, user_id))
+
     def get_users(self) -> List[sqlite3.Row]:
         query = "SELECT * FROM users"
         return self.db.execute(query).fetchall()

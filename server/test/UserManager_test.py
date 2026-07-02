@@ -80,6 +80,55 @@ class UserManagerTest(unittest.TestCase):
         self.manager.delete_user_by_id(created.user_id)
         self.assertIsNone(self.manager.get_user_by_id(created.user_id))
 
+    def test_create_user_has_password_true_and_not_google_linked(self):
+        dto = self.manager.create_user("kate", "s3cret", "kate@example.com")
+        self.assertTrue(dto.has_password)
+        self.assertFalse(dto.google_linked)
+
+    # --- v1.1: Sign in with Google ---
+
+    def test_create_google_user_derives_username_from_email(self):
+        dto = self.manager.create_google_user("newperson@example.com", "google-sub-1")
+        self.assertEqual(dto.username, "newperson")
+        self.assertEqual(dto.email, "newperson@example.com")
+        self.assertFalse(dto.has_password)
+        self.assertTrue(dto.google_linked)
+
+    def test_create_google_user_dedupes_username_collisions(self):
+        self.manager.create_user("sameuser", "s3cret", "sameuser@other.com")
+        dto = self.manager.create_google_user("sameuser@example.com", "google-sub-2")
+        self.assertNotEqual(dto.username, "sameuser")
+        self.assertTrue(dto.username.startswith("sameuser"))
+
+    def test_get_user_by_google_sub_returns_matching_user(self):
+        created = self.manager.create_google_user("gperson@example.com", "google-sub-3")
+        fetched = self.manager.get_user_by_google_sub("google-sub-3")
+        self.assertEqual(fetched.user_id, created.user_id)
+
+    def test_get_user_by_google_sub_returns_none_when_missing(self):
+        self.assertIsNone(self.manager.get_user_by_google_sub("no-such-sub"))
+
+    def test_get_user_by_email_returns_matching_user(self):
+        created = self.manager.create_user("liam", "s3cret", "liam@example.com")
+        fetched = self.manager.get_user_by_email("liam@example.com")
+        self.assertEqual(fetched.user_id, created.user_id)
+
+    def test_link_google_account_marks_user_google_linked(self):
+        created = self.manager.create_user("mia", "s3cret", "mia@example.com")
+        linked = self.manager.link_google_account(created.user_id, "google-sub-4")
+        self.assertTrue(linked.google_linked)
+        self.assertTrue(linked.has_password)
+        self.assertEqual(self.manager.get_user_by_google_sub("google-sub-4").user_id, created.user_id)
+
+    def test_verify_password_returns_false_for_google_only_account(self):
+        self.manager.create_google_user("nopass@example.com", "google-sub-5")
+        self.assertFalse(self.manager.verify_password("nopass", "anything"))
+
+    def test_change_password_returns_false_for_google_only_account(self):
+        created = self.manager.create_google_user("nopass2@example.com", "google-sub-6")
+        changed = self.manager.change_password(created.user_id, "anything", "new-password")
+        self.assertFalse(changed)
+
 
 if __name__ == "__main__":
     unittest.main()

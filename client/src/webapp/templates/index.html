@@ -19,6 +19,12 @@
 
     <main>
         <section id="auth-section">
+            {% if google_client_id %}
+            <div id="google-auth-section">
+                <div id="google-signin-button"></div>
+                <p class="window-hint">or use a username and password below</p>
+            </div>
+            {% endif %}
             <div class="auth-forms">
                 <form id="login-form">
                     <h2>Log in</h2>
@@ -136,6 +142,7 @@
                     <div id="account-info">
                         <p><strong>Username:</strong> <span id="account-username"></span></p>
                         <p><strong>Email:</strong> <span id="account-email"></span></p>
+                        <p id="account-google-badge" class="hidden">Signed in with Google</p>
                     </div>
 
                     <form id="update-email-form">
@@ -150,6 +157,7 @@
                         <input type="password" name="new_password" placeholder="New password" required>
                         <button type="submit">Change password</button>
                     </form>
+                    <p id="account-no-password-hint" class="window-hint hidden">This account signed up with Google and has no local password to change.</p>
 
                     <div id="delete-account-section">
                         <h3>Delete account</h3>
@@ -168,6 +176,10 @@
     </main>
 
     <script>window.PRIOTASK_API_BASE_URL = {{ api_base_url | tojson }};</script>
+    {% if google_client_id %}
+    <script>window.PRIOTASK_GOOGLE_CLIENT_ID = {{ google_client_id | tojson }};</script>
+    <script src="https://accounts.google.com/gsi/client" async defer></script>
+    {% endif %}
     <script type="module" src="{{ url_for('static', filename='js/app.js') }}"></script>
 </body>
 </html>

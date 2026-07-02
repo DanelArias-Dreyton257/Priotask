@@ -23,25 +23,29 @@ def _url_for(endpoint: str, filename: str = "") -> str:
     raise ValueError(f"Unsupported endpoint for static build: {endpoint}")
 
 
-def build(api_base_url: str) -> None:
+def build(api_base_url: str, google_client_id: str = "") -> None:
     if DIST_DIR.exists():
         shutil.rmtree(DIST_DIR)
     DIST_DIR.mkdir(parents=True)
 
     env = Environment(loader=FileSystemLoader(str(WEBAPP_DIR / "templates")))
     template = env.get_template("index.html")
-    html = template.render(api_base_url=api_base_url, url_for=_url_for)
+    html = template.render(api_base_url=api_base_url, google_client_id=google_client_id, url_for=_url_for)
     (DIST_DIR / "index.html").write_text(html, encoding="utf-8")
 
     shutil.copytree(WEBAPP_DIR / "static", DIST_DIR / "static")
 
 
 def main():
-    if len(sys.argv) != 2:
-        print("Usage: build_static_site.py <api_base_url>", file=sys.stderr)
+    # google_client_id (2nd arg) is optional: empty/omitted disables the
+    # Sign in with Google button on the built site (v1.1).
+    if len(sys.argv) not in (2, 3):
+        print("Usage: build_static_site.py <api_base_url> [google_client_id]", file=sys.stderr)
         sys.exit(1)
-    build(sys.argv[1])
-    print(f"Built {DIST_DIR} (API base URL: {sys.argv[1]})")
+    api_base_url = sys.argv[1]
+    google_client_id = sys.argv[2] if len(sys.argv) == 3 else ""
+    build(api_base_url, google_client_id)
+    print(f"Built {DIST_DIR} (API base URL: {api_base_url})")
 
 
 if __name__ == "__main__":

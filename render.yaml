@@ -13,3 +13,5 @@ services:
         value: 3.12.7
       - key: PRIOTASK_SEED_DEMO
         value: "true" # auto-seeds the admin/adminadmin demo account on every boot of an empty DB
+      - key: PRIOTASK_GOOGLE_CLIENT_ID
+        sync: false # set once in the Render dashboard; empty/unset disables /auth/google (503)

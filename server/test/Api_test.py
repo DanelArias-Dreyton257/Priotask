@@ -457,6 +457,78 @@ class ApiTest(unittest.TestCase):
         ).fetchall()
         self.assertGreater(len(token_b), len(token_a))
 
+    # --- v1.1: Sign in with Google ---
+
+    def _enable_google_auth(self, claims=None, raises=False):
+        """Configures the app as if PRIOTASK_GOOGLE_CLIENT_ID were set, and
+        swaps in a fake verifier so tests never hit Google's real network."""
+        self.app.config["GOOGLE_CLIENT_ID"] = "test-client-id"
+        self.app.auth_service.google_client_id = "test-client-id"
+
+        def fake_verifier(id_token_str, client_id):
+            if raises:
+                raise ValueError("invalid token")
+            return claims
+
+        self.app.auth_service.google_verifier = fake_verifier
+
+    def test_google_auth_not_configured_returns_503(self):
+        response = self.client.post("/api/auth/google", json={"id_token": "whatever"})
+        self.assertEqual(response.status_code, 503)
+
+    def test_google_auth_rejects_missing_id_token(self):
+        self._enable_google_auth(claims={"sub": "g1", "email": "a@x.com", "email_verified": True})
+        response = self.client.post("/api/auth/google", json={})
+        self.assertEqual(response.status_code, 400)
+
+    def test_google_auth_rejects_invalid_token(self):
+        self._enable_google_auth(raises=True)
+        response = self.client.post("/api/auth/google", json={"id_token": "bad"})
+        self.assertEqual(response.status_code, 401)
+
+    def test_google_auth_creates_new_account(self):
+        self._enable_google_auth(claims={"sub": "g1", "email": "newbie@x.com", "email_verified": True})
+        response = self.client.post("/api/auth/google", json={"id_token": "tok"})
+        self.assertEqual(response.status_code, 200)
+        body = response.get_json()
+        self.assertIn("token", body)
+        self.assertIn("username", body)
+
+        me = self.client.get("/api/users/me", headers=self._auth_headers(body["token"]))
+        me_body = me.get_json()
+        self.assertEqual(me_body["email"], "newbie@x.com")
+        self.assertTrue(me_body["google_linked"])
+        self.assertFalse(me_body["has_password"])
+
+    def test_google_auth_links_existing_password_account_by_email(self):
+        self._register_and_login("alice", "s3cret!!", "alice@example.com")
+        self._enable_google_auth(claims={"sub": "g2", "email": "alice@example.com", "email_verified": True})
+
+        response = self.client.post("/api/auth/google", json={"id_token": "tok"})
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.get_json()["username"], "alice")
+
+        me = self.client.get("/api/users/me", headers=self._auth_headers(response.get_json()["token"]))
+        me_body = me.get_json()
+        self.assertTrue(me_body["google_linked"])
+        self.assertTrue(me_body["has_password"])  # still logs in with password too
+
+    def test_google_auth_rejects_unverified_email(self):
+        self._enable_google_auth(claims={"sub": "g3", "email": "x@x.com", "email_verified": False})
+        response = self.client.post("/api/auth/google", json={"id_token": "tok"})
+        self.assertEqual(response.status_code, 401)
+
+    def test_google_only_account_cannot_change_password(self):
+        self._enable_google_auth(claims={"sub": "g4", "email": "nopass@x.com", "email_verified": True})
+        token = self.client.post("/api/auth/google", json={"id_token": "tok"}).get_json()["token"]
+
+        response = self.client.post(
+            "/api/users/me/password",
+            json={"current_password": "anything", "new_password": "new-s3cret"},
+            headers=self._auth_headers(token),
+        )
+        self.assertEqual(response.status_code, 400)
+
     # --- Phase 15: auto-retrain callback ---
 
     def test_auto_retrain_callback_fires_at_threshold(self):

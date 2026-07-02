@@ -1,9 +1,10 @@
 """
-User endpoints: POST /users (register), POST /auth/login, POST /auth/logout,
-GET|PUT /users/me (profile + email update), POST /users/me/password (change
-password with current-password verification), DELETE /users/me (cascade-delete
-account). Phase 13 adds /users/me routes; Phase 15 adds DELETE /users/me and
-server-side input validation (username ≥ 3 chars, password ≥ 8 chars).
+User endpoints: POST /users (register), POST /auth/login, POST /auth/google
+(Google sign-in), POST /auth/logout, GET|PUT /users/me (profile + email
+update), POST /users/me/password (change password with current-password
+verification), DELETE /users/me (cascade-delete account). Phase 13 adds
+/users/me routes; Phase 15 adds DELETE /users/me and server-side input
+validation (username ≥ 3 chars, password ≥ 8 chars); v1.1 adds /auth/google.
 """
 from dataclasses import asdict
 
@@ -49,6 +50,24 @@ def login():
     if token is None:
         return jsonify(error="invalid username or password"), 401
     return jsonify(token=token)
+
+
+@user_bp.post("/auth/google")
+def login_with_google():
+    body = request.get_json(silent=True) or {}
+    try:
+        id_token_str = body["id_token"]
+    except KeyError as exc:
+        return jsonify(error=f"missing field: {exc.args[0]}"), 400
+
+    if not current_app.config.get("GOOGLE_CLIENT_ID"):
+        return jsonify(error="Google sign-in is not configured"), 503
+
+    result = current_app.auth_service.login_with_google(id_token_str)
+    if result is None:
+        return jsonify(error="invalid Google credential"), 401
+    token, username = result
+    return jsonify(token=token, username=username)
 
 
 @user_bp.post("/auth/logout")
