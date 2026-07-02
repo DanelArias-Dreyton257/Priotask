@@ -233,6 +233,39 @@ document.getElementById("register-form").addEventListener("submit", (event) => {
     }, { treatAuthErrorAsSessionExpiry: false });
 });
 
+// Sign in with Google (v1.1): only wired up when the server injected a
+// client ID (window.PRIOTASK_GOOGLE_CLIENT_ID), which also gates whether the
+// GIS script tag and the button container even exist in the page - so local
+// dev/CI need no Google setup at all.
+if (window.PRIOTASK_GOOGLE_CLIENT_ID) {
+    function handleGoogleCredential(response) {
+        runOrReportError(async () => {
+            const { username } = await api.loginWithGoogle(response.credential);
+            enterApp(username);
+        }, { treatAuthErrorAsSessionExpiry: false });
+    }
+
+    function initGoogleSignIn() {
+        google.accounts.id.initialize({
+            client_id: window.PRIOTASK_GOOGLE_CLIENT_ID,
+            callback: handleGoogleCredential,
+        });
+        google.accounts.id.renderButton(document.getElementById("google-signin-button"), {
+            theme: "outline",
+            size: "large",
+        });
+    }
+
+    // The GIS script tag has `defer`, so it may still be loading when this
+    // module runs; `onGoogleLibraryLoad` is GIS's own documented hook for
+    // "the library is ready now", set here before that can happen.
+    if (window.google && window.google.accounts) {
+        initGoogleSignIn();
+    } else {
+        window.onGoogleLibraryLoad = initGoogleSignIn;
+    }
+}
+
 document.getElementById("logout-button").addEventListener("click", () => {
     runOrReportError(async () => {
         await api.logout();

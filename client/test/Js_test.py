@@ -502,6 +502,30 @@ class ApiClientTest(_PlaywrightBase):
         }""")
         self.assertIsNone(result)
 
+    def test_login_with_google_posts_id_token_and_stores_session(self):
+        captured = []
+
+        def capture(route):
+            captured.append(route.request.post_data)
+            route.fulfill(
+                status=200,
+                content_type="application/json",
+                body='{"token": "abc123", "username": "newbie"}',
+            )
+
+        self.page.route("**/api/auth/google", capture)
+        result = self.js("""async () => {
+            const { ApiClient } = await import('/static/js/api.js');
+            const { TokenStore } = await import('/static/js/session.js');
+            const api = new ApiClient('http://localhost:5000');
+            const outcome = await api.loginWithGoogle('fake-id-token');
+            return { outcome, storedToken: TokenStore.getToken() };
+        }""")
+        self.assertEqual(result['outcome']['token'], 'abc123')
+        self.assertEqual(result['outcome']['username'], 'newbie')
+        self.assertEqual(result['storedToken'], 'abc123')
+        self.assertIn('"id_token":"fake-id-token"', captured[0])
+
 
 # ---------------------------------------------------------------------------
 # views.js — renderWeekPlan weekday alignment (Phase 14)

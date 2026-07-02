@@ -55,6 +55,12 @@ export class ApiClient {
         TokenStore.clearToken();
     }
 
+    async loginWithGoogle(idToken) {
+        const { token, username } = await this._request("POST", "/api/auth/google", { body: { id_token: idToken } });
+        TokenStore.setToken(token);
+        return { token, username };
+    }
+
     listTasks() {
         return this._request("GET", "/api/tasks", { auth: true });
     }
