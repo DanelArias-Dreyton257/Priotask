@@ -5,6 +5,8 @@ All notable changes to this project are documented here. The format follows
 follows [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
+### Docs
+- Link to the [GitHub Pages deployment history](https://github.com/DanelArias-Dreyton257/Priotask/deployments/github-pages) from the README's Deployment section.
 
 ## [1.0.1] - 2026-07-01
 ### Added
