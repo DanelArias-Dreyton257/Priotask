@@ -1,4 +1,5 @@
 import sqlite3
+import threading
 from typing import Any, Sequence
 
 SCHEMA = """
@@ -72,6 +73,25 @@ _TASKS_RECURRENCE_COLUMNS = {
 # NOT NULL constraint should be recreated with `./scripts/reset_db.sh`.
 
 
+class _Result:
+    """What DB.execute() returns: rows already fetched into memory (see the
+    comment on DB._lock for why), plus the inserted row id if any. Covers
+    every access pattern the DAOs actually use - .fetchone()/.fetchall()/
+    .lastrowid - without holding the shared connection open past execute()."""
+
+    __slots__ = ("_rows", "lastrowid")
+
+    def __init__(self, rows: list, lastrowid: int | None):
+        self._rows = rows
+        self.lastrowid = lastrowid
+
+    def fetchone(self) -> "sqlite3.Row | None":
+        return self._rows[0] if self._rows else None
+
+    def fetchall(self) -> list:
+        return self._rows
+
+
 class DB:
     """
     Thin sqlite3 wrapper: owns the connection, applies the schema on connect,
@@ -82,11 +102,18 @@ class DB:
     def __init__(self, db_path: str = "priotask.db"):
         self.db_path = db_path
         self.connection: sqlite3.Connection | None = None
+        # check_same_thread=False (below) only disables Python's guard
+        # against cross-thread use - it does not make sqlite3.Connection
+        # safe for genuinely *concurrent* access. Flask's dev server runs
+        # threaded by default, and this DB instance is a single connection
+        # shared by every DAO, so two requests landing on different threads
+        # at the same moment can corrupt each other's cursor state
+        # (sqlite3.InterfaceError: "bad parameter or other API misuse").
+        # This lock serializes all query execution to make that safe -
+        # acceptable since sqlite only supports one writer at a time anyway.
+        self._lock = threading.Lock()
 
     def connect(self) -> "DB":
-        # check_same_thread=False: Flask's dev server (and most WSGI servers)
-        # handle each request on its own thread, but this DB instance is a
-        # single connection shared across all of them.
         self.connection = sqlite3.connect(self.db_path, check_same_thread=False)
         self.connection.row_factory = sqlite3.Row
         self.connection.execute("PRAGMA foreign_keys = ON")
@@ -111,10 +138,11 @@ class DB:
             "ON users (google_sub) WHERE google_sub IS NOT NULL"
         )
 
-    def execute(self, query: str, params: Sequence[Any] = ()) -> sqlite3.Cursor:
-        cursor = self.connection.execute(query, params)
-        self.connection.commit()
-        return cursor
+    def execute(self, query: str, params: Sequence[Any] = ()) -> _Result:
+        with self._lock:
+            cursor = self.connection.execute(query, params)
+            self.connection.commit()
+            return _Result(cursor.fetchall(), cursor.lastrowid)
 
     def close(self) -> None:
         if self.connection is not None:
