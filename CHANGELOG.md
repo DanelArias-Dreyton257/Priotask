@@ -5,6 +5,8 @@ All notable changes to this project are documented here. The format follows
 follows [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
+
+## [1.2.0] - 2026-07-02
 ### Added
 - Google Drive backup/restore: accounts signed in with Google get **Backup to Google Drive** /
   **Restore from Google Drive** buttons in the Account window. The client requests an incremental
@@ -74,7 +76,8 @@ Phases 1-15:
   task via water-filling against the available daily hours budget.
 - 144 server-side tests and 42 client-side (Playwright-driven) tests.
 
-[Unreleased]: https://github.com/DanelArias-Dreyton257/Priotask/compare/v1.1.0...HEAD
+[Unreleased]: https://github.com/DanelArias-Dreyton257/Priotask/compare/v1.2.0...HEAD
+[1.2.0]: https://github.com/DanelArias-Dreyton257/Priotask/compare/v1.1.0...v1.2.0
 [1.1.0]: https://github.com/DanelArias-Dreyton257/Priotask/compare/v1.0.1...v1.1.0
 [1.0.1]: https://github.com/DanelArias-Dreyton257/Priotask/compare/v1.0.0...v1.0.1
 [1.0.0]: https://github.com/DanelArias-Dreyton257/Priotask/releases/tag/v1.0.0
