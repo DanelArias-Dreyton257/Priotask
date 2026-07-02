@@ -87,6 +87,27 @@ class TaskManager:
                     recurrence_interval=recurrence_interval, recurrence_end_date=recurrence_end_date)
         return self._domain_to_dto(task)
 
+    def restore_task(self, user_id: int, name: str, deadline: datetime, expected_duration_h: float,
+                      importance: int, task_type: str = "", task_subtype: str = "",
+                      done: bool = False, completed_at: Optional[datetime] = None,
+                      recurrence_unit: Optional[str] = None, recurrence_interval: Optional[int] = None,
+                      recurrence_end_date: Optional[datetime] = None) -> TaskDTO:
+        """Recreates a task exactly as given, including its done/completed_at
+        state - used by Google Drive backup restore (v1.2). Unlike mark_done,
+        this does not add a completion snapshot, spawn the next recurrence, or
+        fire the auto-retrain callback: a restore should reproduce the backed-up
+        data as-is, not replay the side effects that already happened once."""
+        task = self.create_task(
+            user_id, name, deadline, expected_duration_h, importance, task_type, task_subtype,
+            recurrence_unit, recurrence_interval, recurrence_end_date,
+        )
+        if done:
+            completed_at = completed_at or datetime.now()
+            self.dao.mark_done(task.task_id, completed_at.isoformat())
+            task.done = True
+            task.completed_at = completed_at.isoformat()
+        return task
+
     def get_task(self, task_id: int) -> Optional[TaskDTO]:
         row = self.dao.get_task(task_id)
         return self._domain_to_dto(self._row_to_domain(row)) if row else None

@@ -5,7 +5,7 @@ from server.src.data.db.CompletionSnapshotDAO import CompletionSnapshotDAO
 from server.src.data.db.DB import DB
 from server.src.data.db.TaskDAO import TaskDAO
 from server.src.data.db.UserDAO import UserDAO
-from server.src.services.TaskManager import TaskManager
+from server.src.services.TaskManager import AUTO_RETRAIN_EVERY, TaskManager
 from server.src.services.UserManager import UserManager
 
 REFERENCE = datetime(2026, 1, 1)
@@ -212,6 +212,71 @@ class TaskManagerTest(unittest.TestCase):
 
         tasks = self.manager.get_tasks_for_user(self.user_id)
         self.assertEqual(len(tasks), 2)
+
+    def test_restore_task_recreates_open_task(self):
+        restored = self.manager.restore_task(
+            user_id=self.user_id, name="write report", deadline=REFERENCE + timedelta(days=2),
+            expected_duration_h=4.0, importance=5, task_type="work", task_subtype="writing",
+        )
+        self.assertIsNotNone(restored.task_id)
+        self.assertFalse(restored.done)
+        self.assertIsNone(restored.completed_at)
+        fetched = self.manager.get_task(restored.task_id)
+        self.assertEqual(fetched, restored)
+
+    def test_restore_task_preserves_done_and_completed_at(self):
+        completed_at = REFERENCE + timedelta(days=1)
+        restored = self.manager.restore_task(
+            user_id=self.user_id, name="old task", deadline=REFERENCE, expected_duration_h=1.0,
+            importance=3, done=True, completed_at=completed_at,
+        )
+        self.assertTrue(restored.done)
+        self.assertEqual(restored.completed_at, completed_at.isoformat())
+        fetched = self.manager.get_task(restored.task_id)
+        self.assertTrue(fetched.done)
+        self.assertEqual(fetched.completed_at, completed_at.isoformat())
+
+    def test_restore_task_preserves_recurrence_fields(self):
+        restored = self.manager.restore_task(
+            user_id=self.user_id, name="standup", deadline=REFERENCE, expected_duration_h=0.5,
+            importance=2, recurrence_unit="week", recurrence_interval=2,
+            recurrence_end_date=REFERENCE + timedelta(days=90),
+        )
+        fetched = self.manager.get_task(restored.task_id)
+        self.assertEqual(fetched.recurrence_unit, "week")
+        self.assertEqual(fetched.recurrence_interval, 2)
+        self.assertEqual(fetched.recurrence_end_date, (REFERENCE + timedelta(days=90)).isoformat())
+
+    def test_restore_task_of_a_done_recurring_task_does_not_spawn_next_occurrence(self):
+        # A backup taken after completing a recurring task already contains
+        # both the completed occurrence and its auto-spawned successor as
+        # separate entries - restoring the completed one must not spawn a
+        # second, duplicate successor.
+        self.manager.restore_task(
+            user_id=self.user_id, name="standup", deadline=REFERENCE, expected_duration_h=0.5,
+            importance=2, done=True, completed_at=REFERENCE, recurrence_unit="day", recurrence_interval=1,
+        )
+        tasks = self.manager.get_tasks_for_user(self.user_id)
+        self.assertEqual(len(tasks), 1)
+
+    def test_restore_task_does_not_create_completion_snapshot(self):
+        self.manager.restore_task(
+            user_id=self.user_id, name="old task", deadline=REFERENCE, expected_duration_h=1.0,
+            importance=1, done=True, completed_at=REFERENCE,
+        )
+        self.assertEqual(self.manager.get_completion_snapshots(self.user_id), [])
+
+    def test_restore_task_does_not_fire_auto_retrain_callback(self):
+        calls = []
+        manager = TaskManager(
+            TaskDAO(self.db), CompletionSnapshotDAO(self.db), on_completion=lambda uid: calls.append(uid),
+        )
+        for _ in range(AUTO_RETRAIN_EVERY):
+            manager.restore_task(
+                user_id=self.user_id, name="old task", deadline=REFERENCE, expected_duration_h=1.0,
+                importance=1, done=True, completed_at=REFERENCE,
+            )
+        self.assertEqual(calls, [])
 
 
 if __name__ == "__main__":

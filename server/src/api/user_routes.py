@@ -2,20 +2,48 @@
 User endpoints: POST /users (register), POST /auth/login, POST /auth/google
 (Google sign-in), POST /auth/logout, GET|PUT /users/me (profile + email
 update), POST /users/me/password (change password with current-password
-verification), DELETE /users/me (cascade-delete account). Phase 13 adds
-/users/me routes; Phase 15 adds DELETE /users/me and server-side input
-validation (username ≥ 3 chars, password ≥ 8 chars); v1.1 adds /auth/google.
+verification), DELETE /users/me (cascade-delete account), GET /users/me/backup
++ POST /users/me/backup/restore (Google Drive backup export/import, v1.2).
+Phase 13 adds /users/me routes; Phase 15 adds DELETE /users/me and
+server-side input validation (username ≥ 3 chars, password ≥ 8 chars); v1.1
+adds /auth/google.
 """
 from dataclasses import asdict
+from datetime import datetime
 
 from flask import Blueprint, current_app, g, jsonify, request
 
 from server.src.api.auth import require_auth
+from server.src.api.task_routes import _parse_task_fields
 
 user_bp = Blueprint("users", __name__)
 
 _MIN_USERNAME_LEN = 3
 _MIN_PASSWORD_LEN = 8
+
+# v1.2: the client uploads/downloads this exact shape to the user's own
+# Google Drive appDataFolder (see client/src/webapp/static/js/googleDrive.js).
+# The format/version fields let restore reject files that aren't a Priotask
+# backup instead of silently importing garbage.
+BACKUP_FORMAT = "priotask-backup"
+BACKUP_VERSION = 1
+
+
+def _task_to_backup_dict(task) -> dict:
+    """TaskDTO minus the account-specific task_id/user_id, which aren't
+    portable across the delete-and-recreate cycle a restore goes through."""
+    data = asdict(task)
+    del data["task_id"]
+    del data["user_id"]
+    return data
+
+
+def _parse_backup_task(body: dict) -> dict:
+    fields = _parse_task_fields(body)
+    completed_at = body.get("completed_at") or None
+    fields["done"] = bool(body.get("done", False))
+    fields["completed_at"] = datetime.fromisoformat(completed_at) if completed_at else None
+    return fields
 
 
 @user_bp.post("/users")
@@ -129,3 +157,43 @@ def delete_account():
     current_app.auth_service.revoke_user(user_id)
     current_app.user_manager.delete_user_by_id(user_id)
     return "", 204
+
+
+@user_bp.get("/users/me/backup")
+@require_auth
+def export_backup():
+    """v1.2: the whole point of the Drive backup feature is that the server
+    never talks to Google or stores this file - the client fetches it here
+    and uploads it to the user's own Drive appDataFolder itself."""
+    tasks = current_app.task_manager.get_tasks_for_user(g.user_id)
+    return jsonify({
+        "format": BACKUP_FORMAT,
+        "version": BACKUP_VERSION,
+        "exported_at": datetime.now().isoformat(),
+        "tasks": [_task_to_backup_dict(task) for task in tasks],
+    })
+
+
+@user_bp.post("/users/me/backup/restore")
+@require_auth
+def restore_backup():
+    body = request.get_json(silent=True) or {}
+    if body.get("format") != BACKUP_FORMAT:
+        return jsonify(error="unrecognized backup format"), 400
+
+    raw_tasks = body.get("tasks")
+    if not isinstance(raw_tasks, list):
+        return jsonify(error="backup is missing a tasks list"), 400
+
+    try:
+        parsed_tasks = [_parse_backup_task(task) for task in raw_tasks]
+    except (KeyError, TypeError, ValueError) as exc:
+        return jsonify(error=f"invalid backup data: {exc}"), 400
+
+    # Restoring adds the backed-up tasks alongside whatever the account
+    # already has, rather than wiping it - the common case is restoring into
+    # a brand-new account (e.g. after Render's DB reset) where that's a no-op,
+    # but it's also safe to run against an account that already has tasks.
+    for fields in parsed_tasks:
+        current_app.task_manager.restore_task(user_id=g.user_id, **fields)
+    return jsonify(imported=len(parsed_tasks)), 200
