@@ -5,6 +5,33 @@ All notable changes to this project are documented here. The format follows
 follows [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
+### Added
+- Google Drive backup/restore: accounts signed in with Google get **Backup to Google Drive** /
+  **Restore from Google Drive** buttons in the Account window. The client requests an incremental
+  `drive.appdata` OAuth grant (separate from the ID-token sign-in flow) and uploads/downloads the
+  user's tasks directly to a hidden, app-private file in their own Google Drive — the server never
+  talks to Google or stores anything Drive-related, it only exposes plain JSON
+  `GET /api/users/me/backup` / `POST /api/users/me/backup/restore` endpoints scoped to the logged-in
+  user. Meant to let users survive Render's ephemeral-filesystem DB resets without any server-side
+  persistence work. See the README's "Google Drive backup/restore" section.
+- `.env` support for local dev: `python -m server.src.Server` and `python -m client.src.Client` now
+  load a `.env` file (via `python-dotenv`) if one exists, so `PRIOTASK_*` vars like
+  `PRIOTASK_GOOGLE_CLIENT_ID` don't need re-exporting in every terminal. See `.env.example`. Only
+  affects the two local dev entry points — the Render deploy and the built static site are
+  unaffected and keep using real env vars.
+
+### Fixed
+- Intermittent `sqlite3.InterfaceError: bad parameter or other API misuse` (occasionally
+  `OperationalError`/`InterfaceError` variants) under concurrent requests, most visible right after
+  logging in — the client fires several authenticated calls at once (tasks, plan, prioritizer
+  status, account), and Flask's dev server runs threaded by default, so two of them could land on
+  the shared `sqlite3.Connection` at the same instant and corrupt each other's cursor state. This
+  bug has existed since the DB layer was introduced and was there in 1.0.0/1.1.0 too — it just
+  needed enough concurrent traffic on one connection to surface, which testing the new Google
+  sign-in flow's burst of post-login requests reliably did. `DB.execute()` (`server/src/data/db/DB.py`)
+  now serializes all query execution behind a lock and fetches rows before releasing it, instead of
+  handing back a live cursor for the caller to read later, unlocked. Render's deployment was never
+  affected (its gunicorn config runs a single non-threaded worker); this only ever bit local dev.
 
 ## [1.1.0] - 2026-07-02
 ### Added

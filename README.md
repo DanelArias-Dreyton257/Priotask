@@ -28,6 +28,12 @@ pinned to `<3.13` (TensorFlow/Keras don't ship wheels past 3.12 yet) — `conda 
 won't downgrade an existing env's Python version, so if yours predates this pin recreate it:
 `conda env remove -n priotask && conda env create -f environment.yml`.
 
+Optional: copy [`.env.example`](.env.example) to `.env` and fill in any `PRIOTASK_*` vars you
+want set automatically (e.g. `PRIOTASK_GOOGLE_CLIENT_ID` to test Google sign-in/Drive backup
+locally) — `python -m server.src.Server` and `python -m client.src.Client` both load it via
+`python-dotenv` on startup, so you don't need to re-export vars in every terminal. `.env` is
+gitignored; this never affects the deployed instance, which sets real env vars instead.
+
 ### 2. Run the server (API)
 From the repo root:
 ```
@@ -57,7 +63,7 @@ Open `http://localhost:5500` in a browser:
 5. **Done** marks a task complete, **Delete** removes it, **Edit** turns the task into an inline form to change any of its fields (including its recurrence rule), and **Log hours** logs partial progress (subtracting from the task's remaining effort, auto-completing it once none is left); all of these refresh **Today's plan** automatically.
 6. Above the task list: **search by name**, **filter by type/sub-type**, **sort** by priority/deadline/type, and a **Show completed** checkbox to reveal done tasks (hidden by default). Overdue tasks are highlighted in red, and recurring tasks show a "🔁 repeats ..." badge. Type/sub-type on the task form (and the edit form) are dropdowns of categories you've already used, with a "+ Add new..." option for a new one.
 7. The **Prioritizer** window's **Train priority model** fits the user's neural network on their task history — the button is disabled and shows a spinner while training is in flight. It reports whether there was enough completion history to train on once it finishes. The status line shows whether a trained model is currently active and when it was last trained; **Reset model** (shown once a model is active) discards it and reverts to formula-only scoring. The model also re-fits automatically in the background every 5th task completion — no manual "Train" click needed once you have enough history.
-8. The **Account** window shows the logged-in user's username/email, and lets them update their email or change their password (the current password is verified server-side before the change is accepted). An account created via Google sign-in has no local password, so the window shows a "Signed in with Google" badge and hides the change-password form instead (it can still update its email). **Delete account** permanently removes the account and all its data — type "DELETE" in the confirmation box to unlock the button; on success the app logs out automatically.
+8. The **Account** window shows the logged-in user's username/email, and lets them update their email or change their password (the current password is verified server-side before the change is accepted). An account created via Google sign-in has no local password, so the window shows a "Signed in with Google" badge and hides the change-password form instead (it can still update its email). For Google-linked accounts, a **Google Drive backup** section also appears with **Backup to Google Drive** and **Restore from Google Drive** buttons (v1.2) — see [Google Drive backup/restore](#google-drive-backuprestore) below. **Delete account** permanently removes the account and all its data — type "DELETE" in the confirmation box to unlock the button; on success the app logs out automatically.
 
 ### 5. Run the tests
 ```
@@ -65,9 +71,9 @@ python -m unittest discover -s server/test -p "*_test.py"
 python -m unittest discover -s client/test -p "*_test.py"
 ```
 The first command covers the server (Prioritizer, DailyPlanner, TaskManager, UserManager,
-AuthService, API — 170 tests). The second covers the client: `Client_test.py` (smoke test
-that the page and static assets are served) and `Js_test.py` (43 Playwright-driven tests for
-`views.js` and `api.js`). The Playwright tests spin up the Flask client on a local ephemeral
+AuthService, API, DB — 190 tests). The second covers the client: `Client_test.py` (smoke test
+that the page and static assets are served) and `Js_test.py` (49 Playwright-driven tests for
+`views.js`, `api.js` and `googleDrive.js`). The Playwright tests spin up the Flask client on a local ephemeral
 port and exercise the JS modules in a headless Chromium browser; they require
 `python -m playwright install chromium` once (the install scripts do this automatically).
 
@@ -138,13 +144,26 @@ These are one-off steps in the GitHub/Render UIs, not run by any workflow:
    in `render.yaml` with `sync: false`, so it's entered once in Render's
    dashboard). Leaving this unset disables the feature everywhere — no button
    on the client, and the server's `/api/auth/google` returns 503.
+6. (Optional, requires step 5) To enable **Google Drive backup/restore**
+   (v1.2) on top of Sign in with Google: in the same Cloud Console project,
+   go to APIs & Services → Library and enable the **Google Drive API** — no
+   extra credentials or scopes need registering upfront, since `drive.appdata`
+   is requested at runtime via an incremental OAuth grant
+   (`google.accounts.oauth2.initTokenClient`) the first time a user clicks
+   Backup/Restore. Until the app is verified by Google (unlikely to matter for
+   a small/demo deployment), users see an "unverified app" warning on that
+   consent screen; add test users under OAuth consent screen → Test users
+   while in testing mode so they can click through it. No server-side setup
+   is needed — the whole feature is client-side (see
+   [Google Drive backup/restore](#google-drive-backuprestore)).
 
 ### Known limitation
 Render's free tier has an ephemeral filesystem (no persistent disk without a
 paid instance type), so `priotask.db` resets on every redeploy and likely on
 every spin-down/spin-up cycle after 15 minutes of inactivity. Fine for
 demoing v1.0.0; not a place to keep real data yet — see
-[Planned Improvements](#technical--operational).
+[Planned Improvements](#technical--operational). Accounts signed in with
+Google can work around this today with [Google Drive backup/restore](#google-drive-backuprestore) (v1.2).
 
 To keep the deployed instance demoable through those resets, the Render
 service runs with `PRIOTASK_SEED_DEMO=true`, which auto-seeds an
@@ -166,12 +185,20 @@ for the published artifacts.
 Priotask is a client-server application written entirely in Python (no Node.js, no build step). The **server** (port 5000) handles persistence, business logic, and the prioritization engine. The **client** (port 5500) is a Flask app that serves a static HTML/CSS/JS shell; all app logic runs client-side in the browser, talking to the server API over HTTP.
 
 The JS layering mirrors the server's DAO/service split:
-- **`api.js`** (`ApiClient`) — the only place that calls `fetch`; knows the routes and JSON shapes (`TaskDTO`/`UserDTO`).
+- **`api.js`** (`ApiClient`) — the only place that calls `fetch` against Priotask's own API; knows the routes and JSON shapes (`TaskDTO`/`UserDTO`).
+- **`googleDrive.js`** (v1.2) — the `api.js` equivalent for Google Drive: the only place that calls `fetch` against `googleapis.com`, used by the [Google Drive backup/restore](#google-drive-backuprestore) feature.
 - **`session.js`** (`TokenStore`) — persists the bearer token (and username) in `localStorage` so a page refresh doesn't log the user out.
 - **`views.js`** (`Views`) — pure DOM rendering from plain data, no fetch calls and no app state.
-- **`app.js`** — the controller: wires DOM events to `ApiClient` calls and `Views` updates; the only place that holds app state.
+- **`app.js`** — the controller: wires DOM events to `ApiClient`/`googleDrive.js` calls and `Views` updates; the only place that holds app state.
 
 The server-side `RemoteFacade`/`TokenManager` stubs (`server/src/remote/`) are kept as scaffolding for a possible future native client (e.g. Android) — the web client talks to the API directly over HTTP and doesn't use them.
+
+### Google Drive backup/restore
+For accounts signed in with Google, the Account window (v1.2) offers **Backup to Google Drive** and **Restore from Google Drive**. This exists to give users a way to survive Render's ephemeral-filesystem DB resets (see [Known limitation](#known-limitation)) without adding any server-side persistence:
+- The server only exposes plain JSON endpoints scoped to the logged-in user — `GET /api/users/me/backup` (export) and `POST /api/users/me/backup/restore` (import, additive: it creates the backed-up tasks alongside whatever the account already has rather than wiping it). It never talks to Google and stores nothing Drive-related.
+- The client does the rest: on button click, `googleDrive.js` requests a short-lived OAuth access token for the `drive.appdata` scope via `google.accounts.oauth2` (a separate, incremental grant from the ID-token "Sign in with Google" flow — requested only when a backup/restore button is actually clicked), then uploads/downloads the exported JSON directly to a single file in the user's Drive **appDataFolder** — a hidden, per-app storage space that doesn't show up in the user's normal Drive UI and that only this app can read.
+- Restoring re-creates each task as-is (including its done/completed-at state) via `TaskManager.restore_task`, without replaying side effects like recurrence spawning or prioritizer auto-retraining that already happened once when the backup was taken.
+- The trained `PrioritizerNetwork` model itself is not included in the backup — only tasks. Retrain from the Prioritizer window after a restore if you had one.
 
 ### Prioritization Engine
 Two models sit behind a common `PrioritizerModel` interface:
@@ -201,13 +228,14 @@ Priotask/
 │   │       └── static/
 │   │           ├── css/style.css
 │   │           └── js/
-│   │               ├── api.js       # ApiClient: fetch wrapper over the server REST API
-│   │               ├── session.js   # TokenStore: localStorage-backed bearer token
-│   │               ├── views.js     # DOM rendering, no app state or fetch calls
-│   │               └── app.js       # Controller: wires api.js + session.js + views.js
+│   │               ├── api.js         # ApiClient: fetch wrapper over the server REST API
+│   │               ├── googleDrive.js # Fetch wrapper over the Drive REST API (v1.2 backup/restore)
+│   │               ├── session.js     # TokenStore: localStorage-backed bearer token
+│   │               ├── views.js       # DOM rendering, no app state or fetch calls
+│   │               └── app.js         # Controller: wires api.js + googleDrive.js + session.js + views.js
 │   └── test/
 │       ├── Client_test.py   # Smoke test: index page + static JS are served
-│       └── Js_test.py       # 42 Playwright-driven JS unit tests
+│       └── Js_test.py       # 49 Playwright-driven JS unit tests
 │
 └── server/
     ├── wsgi.py              # gunicorn entry point for production (server.wsgi:app)
@@ -218,7 +246,8 @@ Priotask/
     │   │   ├── app.py             # create_app(): wires DB/managers/services, registers blueprints, CORS
     │   │   ├── auth.py            # require_auth decorator (Bearer token → g.user_id)
     │   │   ├── user_routes.py     # POST /users, /auth/login, /auth/google, /auth/logout,
-    │   │   │                      # GET|PUT /users/me, POST /users/me/password, DELETE /users/me
+    │   │   │                      # GET|PUT /users/me, POST /users/me/password, DELETE /users/me,
+    │   │   │                      # GET /users/me/backup + POST /users/me/backup/restore (v1.2)
     │   │   ├── task_routes.py     # CRUD for /tasks (+ /complete, /log-hours)
     │   │   ├── plan_routes.py     # GET /plan/today, GET /plan/week
     │   │   └── prioritizer_routes.py  # POST /prioritizer/train, GET /prioritizer/status,
@@ -231,7 +260,7 @@ Priotask/
     │   ├── remote/          # Client-server link stubs: RemoteFacade, TokenManager
     │   └── services/
     │       ├── TaskManager.py      # Task CRUD, completion snapshots, partial-hours logging,
-    │       │                       # recurrence spawning, auto-retrain callback
+    │       │                       # recurrence spawning, auto-retrain callback, backup restore (v1.2)
     │       ├── Recurrence.py       # next_deadline(): day/week/month date arithmetic
     │       ├── UserManager.py      # User CRUD + password hashing (PBKDF2-HMAC-SHA256);
     │       │                       # Google account creation/linking
@@ -253,6 +282,7 @@ Priotask/
         ├── TaskManager_test.py
         ├── UserManager_test.py
         ├── AuthService_test.py
+        ├── DB_test.py           # Concurrent-access safety (v1.2 fix, see CHANGELOG)
         ├── Api_test.py
         └── Server_test.py
 ```

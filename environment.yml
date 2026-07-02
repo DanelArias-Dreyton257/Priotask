@@ -26,3 +26,6 @@ dependencies:
       - google-auth
       # Browser-driven manual/E2E verification of the client UI
       - playwright
+      # v1.2: loads .env for local dev (PRIOTASK_* vars) — python -m server.src.Server /
+      # client.src.Client only; the Render deploy sets real env vars, not a .env file.
+      - python-dotenv

@@ -476,6 +476,18 @@ button:disabled {
     background: #d9534f;
 }
 
+#google-backup-section {
+    margin-top: 1.5rem;
+    border-top: 1px solid #e5e7eb;
+    padding-top: 1rem;
+}
+
+.google-backup-buttons {
+    display: flex;
+    gap: 0.5rem;
+    flex-wrap: wrap;
+}
+
 #delete-account-section {
     margin-top: 1.5rem;
     border-top: 1px solid #e5e7eb;

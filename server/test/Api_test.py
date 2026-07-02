@@ -564,6 +564,136 @@ class ApiTest(unittest.TestCase):
 
         self.assertEqual(len(called_for), 0)
 
+    # --- v1.2: Google Drive backup export/restore ---
+
+    def test_export_backup_requires_auth(self):
+        response = self.client.get("/api/users/me/backup")
+        self.assertEqual(response.status_code, 401)
+
+    def test_export_backup_returns_tasks_without_ids(self):
+        token = self._register_and_login()
+        self._create_task(token)
+
+        response = self.client.get("/api/users/me/backup", headers=self._auth_headers(token))
+        self.assertEqual(response.status_code, 200)
+        body = response.get_json()
+        self.assertEqual(body["format"], "priotask-backup")
+        self.assertEqual(body["version"], 1)
+        self.assertEqual(len(body["tasks"]), 1)
+        self.assertEqual(body["tasks"][0]["name"], "write report")
+        self.assertNotIn("task_id", body["tasks"][0])
+        self.assertNotIn("user_id", body["tasks"][0])
+
+    def test_import_backup_creates_tasks(self):
+        token = self._register_and_login()
+        backup = {
+            "format": "priotask-backup",
+            "version": 1,
+            "tasks": [{
+                "name": "restored task",
+                "deadline": (REFERENCE + timedelta(days=3)).isoformat(),
+                "expected_duration_h": 2.0,
+                "importance": 4,
+            }],
+        }
+        response = self.client.post(
+            "/api/users/me/backup/restore", json=backup, headers=self._auth_headers(token),
+        )
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.get_json(), {"imported": 1})
+
+        listed = self.client.get("/api/tasks", headers=self._auth_headers(token))
+        self.assertEqual(len(listed.get_json()), 1)
+        self.assertEqual(listed.get_json()[0]["name"], "restored task")
+
+    def test_import_backup_preserves_done_status(self):
+        token = self._register_and_login()
+        backup = {
+            "format": "priotask-backup",
+            "version": 1,
+            "tasks": [{
+                "name": "already done",
+                "deadline": REFERENCE.isoformat(),
+                "expected_duration_h": 1.0,
+                "importance": 1,
+                "done": True,
+                "completed_at": REFERENCE.isoformat(),
+            }],
+        }
+        self.client.post("/api/users/me/backup/restore", json=backup, headers=self._auth_headers(token))
+
+        listed = self.client.get("/api/tasks", headers=self._auth_headers(token)).get_json()
+        self.assertTrue(listed[0]["done"])
+        self.assertEqual(listed[0]["completed_at"], REFERENCE.isoformat())
+
+    def test_import_backup_adds_to_existing_tasks_without_wiping_them(self):
+        token = self._register_and_login()
+        self._create_task(token, name="already here")
+        backup = {
+            "format": "priotask-backup",
+            "version": 1,
+            "tasks": [{
+                "name": "from backup",
+                "deadline": REFERENCE.isoformat(),
+                "expected_duration_h": 1.0,
+                "importance": 1,
+            }],
+        }
+        self.client.post("/api/users/me/backup/restore", json=backup, headers=self._auth_headers(token))
+
+        names = {t["name"] for t in self.client.get("/api/tasks", headers=self._auth_headers(token)).get_json()}
+        self.assertEqual(names, {"already here", "from backup"})
+
+    def test_import_backup_rejects_wrong_format(self):
+        token = self._register_and_login()
+        response = self.client.post(
+            "/api/users/me/backup/restore", json={"format": "something-else", "tasks": []},
+            headers=self._auth_headers(token),
+        )
+        self.assertEqual(response.status_code, 400)
+
+    def test_import_backup_rejects_missing_tasks_list(self):
+        token = self._register_and_login()
+        response = self.client.post(
+            "/api/users/me/backup/restore", json={"format": "priotask-backup"},
+            headers=self._auth_headers(token),
+        )
+        self.assertEqual(response.status_code, 400)
+
+    def test_import_backup_rejects_invalid_task_data(self):
+        token = self._register_and_login()
+        response = self.client.post(
+            "/api/users/me/backup/restore",
+            json={"format": "priotask-backup", "tasks": [{"name": "missing fields"}]},
+            headers=self._auth_headers(token),
+        )
+        self.assertEqual(response.status_code, 400)
+
+    def test_import_backup_requires_auth(self):
+        response = self.client.post(
+            "/api/users/me/backup/restore", json={"format": "priotask-backup", "tasks": []},
+        )
+        self.assertEqual(response.status_code, 401)
+
+    def test_backup_round_trip_preserves_task_fields(self):
+        token = self._register_and_login()
+        self._create_task(
+            token, name="round trip", task_type="work", task_subtype="writing",
+            recurrence_unit="week", recurrence_interval=2,
+        )
+        exported = self.client.get("/api/users/me/backup", headers=self._auth_headers(token)).get_json()
+
+        other_token = self._register_and_login(username="bob", email="bob@example.com")
+        self.client.post(
+            "/api/users/me/backup/restore", json=exported, headers=self._auth_headers(other_token),
+        )
+        restored = self.client.get("/api/tasks", headers=self._auth_headers(other_token)).get_json()[0]
+        self.assertEqual(restored["name"], "round trip")
+        self.assertEqual(restored["task_type"], "work")
+        self.assertEqual(restored["task_subtype"], "writing")
+        self.assertEqual(restored["recurrence_unit"], "week")
+        self.assertEqual(restored["recurrence_interval"], 2)
+
 
 if __name__ == "__main__":
     unittest.main()
