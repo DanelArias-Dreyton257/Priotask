@@ -6,6 +6,14 @@ follows [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [1.2.2] - 2026-07-02
+### Changed
+- Migrated the Render deploy from a manually-configured Web Service to a Blueprint
+  (`render.yaml`-managed). Since the Blueprint's declared service name didn't match the old
+  manual one, Render provisioned a new service rather than adopting the old one, so the API's
+  public URL changed to `https://priotask-api.onrender.com`. This release just rebuilds and
+  republishes the static client with that new URL baked in — no application code changed.
+
 ## [1.2.1] - 2026-07-02
 ### Added
 - Auto-restore after Google login: signing in with Google now silently checks for an existing
@@ -86,7 +94,8 @@ Phases 1-15:
   task via water-filling against the available daily hours budget.
 - 144 server-side tests and 42 client-side (Playwright-driven) tests.
 
-[Unreleased]: https://github.com/DanelArias-Dreyton257/Priotask/compare/v1.2.1...HEAD
+[Unreleased]: https://github.com/DanelArias-Dreyton257/Priotask/compare/v1.2.2...HEAD
+[1.2.2]: https://github.com/DanelArias-Dreyton257/Priotask/compare/v1.2.1...v1.2.2
 [1.2.1]: https://github.com/DanelArias-Dreyton257/Priotask/compare/v1.2.0...v1.2.1
 [1.2.0]: https://github.com/DanelArias-Dreyton257/Priotask/compare/v1.1.0...v1.2.0
 [1.1.0]: https://github.com/DanelArias-Dreyton257/Priotask/compare/v1.0.1...v1.1.0
